@@ -6,6 +6,7 @@ import { TopBar, type View } from "./components/top-bar";
 import { Sidebar } from "./components/sidebar";
 import { DetailPanel } from "./components/detail-panel";
 import { ExportModal } from "./components/export-modal";
+import { AutomateModal } from "./components/automate-modal";
 import { LibraryView } from "./components/library-view";
 import { Landing } from "./components/landing";
 import { type Workflow, type Theme } from "@/lib/workflows";
@@ -70,11 +71,13 @@ export default function Home() {
   const [started, setStarted] = useState(false);
   const [view, setView] = useState<View>("canvas");
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [focusId, setFocusId] = useState<string | null>(null);
   const [themeFilter, setThemeFilter] = useState<Theme | null>(null);
   const [connectMode, setConnectMode] = useState<{ fromId: string } | null>(null);
   const [newOpen, setNewOpen] = useState(false);
   const [exportTarget, setExportTarget] = useState<"all" | { id: string } | null>(null);
+  const [automateOpen, setAutomateOpen] = useState(false);
 
   const selected = useMemo(
     () => workflows.find((w) => w.id === selectedId) ?? null,
@@ -83,7 +86,17 @@ export default function Home() {
 
   const handleSelectFromSidebar = (id: string) => {
     setSelectedId(id);
+    setSelectedIds(new Set());
     if (view === "canvas") setFocusId(id + ":" + Date.now());
+  };
+
+  const handleMultiSelect = (id: string) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+    setSelectedId(null);
   };
 
   const handleOpenFromLibrary = (id: string) => {
@@ -110,6 +123,7 @@ export default function Home() {
     setWorkflows((prev) => prev.filter((w) => w.id !== id));
     setConnections((prev) => prev.filter((c) => c.from !== id && c.to !== id));
     if (selectedId === id) setSelectedId(null);
+    setSelectedIds((prev) => { const next = new Set(prev); next.delete(id); return next; });
     if (connectMode?.fromId === id) setConnectMode(null);
   };
 
@@ -131,6 +145,12 @@ export default function Home() {
   const handleDeleteConnection = (fromId: string, toId: string) => {
     setConnections((prev) => prev.filter((c) => !(c.from === fromId && c.to === toId)));
   };
+
+  const automateWorkflows = useMemo(() => {
+    if (selectedIds.size > 0) return workflows.filter((w) => selectedIds.has(w.id));
+    if (selectedId) return workflows.filter((w) => w.id === selectedId);
+    return [];
+  }, [selectedIds, selectedId, workflows]);
 
   const exportTitle =
     exportTarget === "all"
@@ -168,6 +188,8 @@ export default function Home() {
         onView={setView}
         onExport={() => setExportTarget("all")}
         onNew={() => setNewOpen(true)}
+        onAutomate={() => setAutomateOpen(true)}
+        automateCount={automateWorkflows.length}
       />
 
       <div className="flex flex-1 overflow-hidden">
@@ -186,9 +208,11 @@ export default function Home() {
                 workflows={workflows}
                 connections={connections}
                 selectedId={selectedId}
+                selectedIds={selectedIds}
                 themeFilter={themeFilter}
                 connectMode={connectMode}
-                onSelect={setSelectedId}
+                onSelect={(id) => { setSelectedId(id); setSelectedIds(new Set()); }}
+                onMultiSelect={handleMultiSelect}
                 onCreateConnection={handleCreateConnection}
                 onDeleteConnection={handleDeleteConnection}
                 onCancelConnect={() => setConnectMode(null)}
@@ -227,6 +251,13 @@ export default function Home() {
         title={exportTitle}
         markdown={exportMarkdown}
         onClose={() => setExportTarget(null)}
+      />
+
+      <AutomateModal
+        open={automateOpen}
+        workflows={automateWorkflows}
+        connections={connections}
+        onClose={() => setAutomateOpen(false)}
       />
     </div>
   );

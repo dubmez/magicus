@@ -12,9 +12,11 @@ export function Canvas({
   workflows,
   connections,
   selectedId,
+  selectedIds,
   themeFilter,
   connectMode,
   onSelect,
+  onMultiSelect,
   onCreateConnection,
   onDeleteConnection,
   onCancelConnect,
@@ -23,9 +25,11 @@ export function Canvas({
   workflows: Workflow[];
   connections: Connection[];
   selectedId: string | null;
+  selectedIds: Set<string>;
   themeFilter: Theme | null;
   connectMode: { fromId: string } | null;
   onSelect: (id: string | null) => void;
+  onMultiSelect: (id: string) => void;
   onCreateConnection: (fromId: string, toId: string) => void;
   onDeleteConnection: (fromId: string, toId: string) => void;
   onCancelConnect: () => void;
@@ -284,6 +288,7 @@ export function Canvas({
                 data={w}
                 hovered={hovered === w.id}
                 selected={selectedId === w.id}
+                multiSelected={selectedIds.has(w.id)}
                 onMouseEnter={() => setHovered(w.id)}
                 onMouseLeave={() => setHovered(null)}
                 onClick={(e) => {
@@ -294,6 +299,10 @@ export function Canvas({
                     } else {
                       onCancelConnect();
                     }
+                    return;
+                  }
+                  if (e.shiftKey) {
+                    onMultiSelect(w.id);
                     return;
                   }
                   onSelect(selectedId === w.id ? null : w.id);

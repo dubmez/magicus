@@ -42,6 +42,7 @@ function IOCard({ item, align }: { item: IOItem; align: "left" | "right" }) {
 export function ButterflyCard({
   data,
   selected = false,
+  multiSelected = false,
   hovered = false,
   compact = false,
   maxTasks,
@@ -51,6 +52,7 @@ export function ButterflyCard({
 }: {
   data: ButterflyData;
   selected?: boolean;
+  multiSelected?: boolean;
   hovered?: boolean;
   compact?: boolean;
   maxTasks?: number;
@@ -58,7 +60,7 @@ export function ButterflyCard({
   onMouseEnter?: () => void;
   onMouseLeave?: () => void;
 }) {
-  const shadow = selected
+  const shadow = selected || multiSelected
     ? "drop-shadow(0px 0px 0px rgba(84, 120, 99, 0.9)) drop-shadow(0px 8px 32px rgba(59, 73, 83, 0.18))"
     : hovered
     ? "drop-shadow(0px 6px 28px rgba(59, 73, 83, 0.18))"
@@ -77,13 +79,33 @@ export function ButterflyCard({
         width: compact ? 280 : 560,
         filter: shadow,
         cursor: "pointer",
-        transform: hovered && !selected ? "translateY(-2px)" : "translateY(0)",
-        outline: selected ? "2px solid #547863" : "none",
+        transform: hovered && !selected && !multiSelected ? "translateY(-2px)" : "translateY(0)",
+        outline: multiSelected ? "2.5px solid #547863" : selected ? "2px solid #547863" : "none",
         outlineOffset: 6,
         borderRadius: 24,
         ...dmSans,
       }}
     >
+      {multiSelected && (
+        <div
+          className="absolute z-20 flex items-center justify-center"
+          style={{
+            top: -8,
+            left: -8,
+            width: 22,
+            height: 22,
+            borderRadius: 999,
+            background: "#547863",
+            border: "2px solid #FFFFFF",
+            boxShadow: "0 1px 4px rgba(59,73,83,0.2)",
+          }}
+        >
+          <svg width="10" height="8" viewBox="0 0 10 8" fill="none">
+            <path d="M1 4L3.5 6.5L9 1" stroke="#EBF4DD" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
+        </div>
+      )}
+
       {showAutomatable && (
         <div
           className="absolute z-20 flex items-center gap-1"

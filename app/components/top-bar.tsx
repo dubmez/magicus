@@ -1,6 +1,6 @@
 "use client";
 
-import { Download, LayoutGrid, Library, Plus } from "lucide-react";
+import { Download, LayoutGrid, Library, Plus, Zap } from "lucide-react";
 
 export type View = "canvas" | "library";
 
@@ -9,11 +9,15 @@ export function TopBar({
   onView,
   onExport,
   onNew,
+  onAutomate,
+  automateCount,
 }: {
   view: View;
   onView: (v: View) => void;
   onExport: () => void;
   onNew: () => void;
+  onAutomate: () => void;
+  automateCount: number;
 }) {
   return (
     <div
@@ -109,6 +113,37 @@ export function TopBar({
         >
           <Plus size={14} />
           New workflow
+        </button>
+        <button
+          onClick={onAutomate}
+          disabled={automateCount === 0}
+          className="flex items-center gap-2 transition-all hover:opacity-90"
+          style={{
+            background: automateCount > 0 ? "#547863" : "#EBF4DD",
+            color: automateCount > 0 ? "#EBF4DD" : "#90AB8B",
+            padding: "8px 16px",
+            borderRadius: 999,
+            fontSize: 13,
+            fontWeight: 500,
+            cursor: automateCount === 0 ? "not-allowed" : "pointer",
+            transition: "background 0.15s",
+          }}
+        >
+          <Zap size={14} fill={automateCount > 0 ? "#EBF4DD" : "#90AB8B"} strokeWidth={0} />
+          Automate it
+          {automateCount > 0 && (
+            <span
+              style={{
+                background: "rgba(235,244,221,0.25)",
+                borderRadius: 999,
+                padding: "1px 7px",
+                fontSize: 11,
+                fontWeight: 600,
+              }}
+            >
+              {automateCount}
+            </span>
+          )}
         </button>
         <button
           onClick={onExport}
