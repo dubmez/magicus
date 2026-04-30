@@ -1,7 +1,8 @@
 "use client";
 
-import { X, Download, Zap, Link2, Trash2 } from "lucide-react";
-import type { Workflow } from "@/lib/workflows";
+import { useCallback, useRef, useState } from "react";
+import { X, Download, Zap, Link2, Trash2, Plus, Check } from "lucide-react";
+import type { Workflow, Theme } from "@/lib/workflows";
 import { THEME_META } from "@/lib/workflows";
 
 const dmSerif = { fontFamily: "var(--font-dm-serif), serif", fontStyle: "italic" as const };
@@ -26,30 +27,123 @@ function Section({ label, children }: { label: string; children: React.ReactNode
   );
 }
 
-function Tag({
-  children,
-  color = "#EBF4DD",
-  text = "#3B4953",
+function InlineInput({
+  value,
+  onChange,
+  placeholder,
+  style,
 }: {
-  children: React.ReactNode;
-  color?: string;
-  text?: string;
+  value: string;
+  onChange: (v: string) => void;
+  placeholder?: string;
+  style?: React.CSSProperties;
 }) {
+  const [focused, setFocused] = useState(false);
   return (
-    <span
+    <input
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+      placeholder={placeholder}
+      onFocus={() => setFocused(true)}
+      onBlur={() => setFocused(false)}
       style={{
-        display: "inline-flex",
-        alignItems: "center",
-        gap: 4,
-        background: color,
-        color: text,
-        fontSize: 11,
-        padding: "3px 9px",
+        background: "transparent",
+        border: "none",
+        borderBottom: `1px solid ${focused ? "#547863" : "#EBF4DD"}`,
+        outline: "none",
+        fontFamily: "inherit",
+        color: "inherit",
+        fontSize: "inherit",
+        lineHeight: "inherit",
+        width: "100%",
+        padding: "2px 0",
+        ...style,
+      }}
+    />
+  );
+}
+
+function InlineTextarea({
+  value,
+  onChange,
+  placeholder,
+  rows = 3,
+  style,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  placeholder?: string;
+  rows?: number;
+  style?: React.CSSProperties;
+}) {
+  const [focused, setFocused] = useState(false);
+  return (
+    <textarea
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+      placeholder={placeholder}
+      rows={rows}
+      onFocus={() => setFocused(true)}
+      onBlur={() => setFocused(false)}
+      style={{
+        background: focused ? "#F7FAF2" : "transparent",
+        border: `1px solid ${focused ? "#547863" : "transparent"}`,
+        borderRadius: 8,
+        outline: "none",
+        fontFamily: "inherit",
+        color: "#3B4953",
+        fontSize: 13,
+        width: "100%",
+        padding: focused ? "8px 10px" : "0",
+        resize: "none",
+        lineHeight: 1.55,
+        transition: "background 0.12s, border 0.12s, padding 0.12s",
+        ...style,
+      }}
+    />
+  );
+}
+
+function AddToolInput({ onAdd }: { onAdd: (tool: string) => void }) {
+  const [val, setVal] = useState("");
+  const ref = useRef<HTMLInputElement>(null);
+  const commit = () => {
+    const t = val.trim();
+    if (t) { onAdd(t); setVal(""); }
+  };
+  return (
+    <div
+      className="flex items-center gap-1"
+      style={{
+        background: "#F7FAF2",
+        border: "1px dashed #90AB8B",
         borderRadius: 999,
+        padding: "2px 8px",
+        minWidth: 80,
       }}
     >
-      {children}
-    </span>
+      <input
+        ref={ref}
+        value={val}
+        onChange={(e) => setVal(e.target.value)}
+        onKeyDown={(e) => { if (e.key === "Enter") commit(); }}
+        placeholder="Add tool…"
+        style={{
+          background: "transparent",
+          border: "none",
+          outline: "none",
+          fontSize: 11,
+          color: "#547863",
+          width: val.length > 0 ? `${val.length + 2}ch` : "7ch",
+          fontFamily: "inherit",
+        }}
+      />
+      {val.trim().length > 0 && (
+        <button onClick={commit} style={{ color: "#547863", display: "flex" }}>
+          <Check size={10} />
+        </button>
+      )}
+    </div>
   );
 }
 
@@ -59,13 +153,20 @@ export function DetailPanel({
   onExport,
   onChain,
   onDelete,
+  onUpdate,
 }: {
   workflow: Workflow | null;
   onClose: () => void;
   onExport: (id: string) => void;
   onChain: (id: string) => void;
   onDelete: (id: string) => void;
+  onUpdate: (id: string, changes: Partial<Workflow>) => void;
 }) {
+  const update = useCallback(
+    (changes: Partial<Workflow>) => { if (workflow) onUpdate(workflow.id, changes); },
+    [workflow, onUpdate]
+  );
+
   const open = !!workflow;
   return (
     <div
@@ -82,6 +183,8 @@ export function DetailPanel({
     >
       {workflow && (
         <div className="h-full flex flex-col" style={{ width: 420 }}>
+
+          {/* Header */}
           <div
             style={{
               padding: "18px 20px 14px",
@@ -92,37 +195,46 @@ export function DetailPanel({
             }}
           >
             <div style={{ flex: 1 }}>
-              <div className="flex items-center gap-2" style={{ marginBottom: 6 }}>
-                <span
-                  style={{
-                    width: 8,
-                    height: 8,
-                    borderRadius: 999,
-                    background: THEME_META[workflow.theme].dot,
-                  }}
-                />
-                <span
-                  style={{
-                    fontSize: 11,
-                    color: "#547863",
-                    textTransform: "uppercase",
-                    letterSpacing: 1,
-                  }}
-                >
+              {/* Theme picker */}
+              <div className="flex items-center gap-2" style={{ marginBottom: 8 }}>
+                {(Object.keys(THEME_META) as Theme[]).map((t) => (
+                  <button
+                    key={t}
+                    onClick={() => update({ theme: t })}
+                    title={THEME_META[t].label}
+                    style={{
+                      width: 10,
+                      height: 10,
+                      borderRadius: 999,
+                      background: THEME_META[t].dot,
+                      outline: workflow.theme === t ? `2px solid ${THEME_META[t].dot}` : "none",
+                      outlineOffset: 2,
+                      border: "none",
+                      cursor: "pointer",
+                      padding: 0,
+                    }}
+                  />
+                ))}
+                <span style={{ fontSize: 11, color: "#547863", textTransform: "uppercase", letterSpacing: 1, marginLeft: 4 }}>
                   {THEME_META[workflow.theme].label}
                 </span>
               </div>
-              <div style={{ ...dmSerif, fontSize: 22, color: "#3B4953", lineHeight: 1.2 }}>
-                {workflow.name}
-              </div>
+
+              {/* Editable name */}
+              <InlineInput
+                value={workflow.name}
+                onChange={(v) => update({ name: v })}
+                placeholder="Workflow name"
+                style={{ ...dmSerif, fontSize: 22, color: "#3B4953", lineHeight: "1.2" }}
+              />
             </div>
-            <div className="flex items-center gap-1">
+
+            <div className="flex items-center gap-1" style={{ marginTop: 4 }}>
               <button
                 onClick={() => onDelete(workflow.id)}
                 className="hover:bg-[#EBF4DD] rounded-md p-1.5"
                 style={{ color: "#90AB8B" }}
                 aria-label="Delete workflow"
-                title="Delete workflow"
               >
                 <Trash2 size={15} />
               </button>
@@ -137,25 +249,76 @@ export function DetailPanel({
             </div>
           </div>
 
+          {/* Scrollable body */}
           <div className="flex-1 overflow-y-auto" style={{ padding: "20px" }}>
-            <div className="flex flex-wrap gap-1.5" style={{ marginBottom: 22 }}>
-              <Tag>Owner · {workflow.owner}</Tag>
-              <Tag>{workflow.frequency}</Tag>
+
+            {/* Owner + Frequency */}
+            <div className="flex gap-2" style={{ marginBottom: 22 }}>
+              <div
+                style={{
+                  flex: 1,
+                  background: "#F7FAF2",
+                  border: "1px solid #EBF4DD",
+                  borderRadius: 8,
+                  padding: "6px 10px",
+                }}
+              >
+                <div style={{ fontSize: 9, color: "#90AB8B", textTransform: "uppercase", letterSpacing: 1, marginBottom: 2 }}>
+                  Owner
+                </div>
+                <InlineInput
+                  value={workflow.owner}
+                  onChange={(v) => update({ owner: v })}
+                  placeholder="Unassigned"
+                  style={{ fontSize: 12, color: "#3B4953", fontWeight: 500 }}
+                />
+              </div>
+              <div
+                style={{
+                  flex: 1,
+                  background: "#F7FAF2",
+                  border: "1px solid #EBF4DD",
+                  borderRadius: 8,
+                  padding: "6px 10px",
+                }}
+              >
+                <div style={{ fontSize: 9, color: "#90AB8B", textTransform: "uppercase", letterSpacing: 1, marginBottom: 2 }}>
+                  Trigger
+                </div>
+                <InlineInput
+                  value={workflow.frequency}
+                  onChange={(v) => update({ frequency: v })}
+                  placeholder="e.g. Per event"
+                  style={{ fontSize: 12, color: "#3B4953", fontWeight: 500 }}
+                />
+              </div>
             </div>
 
             <Section label="Why">
-              <div style={{ fontSize: 13, color: "#3B4953", lineHeight: 1.5 }}>{workflow.why}</div>
+              <InlineTextarea
+                value={workflow.why}
+                onChange={(v) => update({ why: v })}
+                placeholder="Why does this workflow exist?"
+                rows={2}
+              />
             </Section>
 
             <Section label="When">
-              <div style={{ fontSize: 13, color: "#3B4953", lineHeight: 1.5 }}>{workflow.when}</div>
+              <InlineTextarea
+                value={workflow.when}
+                onChange={(v) => update({ when: v })}
+                placeholder="What triggers this workflow?"
+                rows={2}
+              />
             </Section>
 
+            {/* Tasks */}
             <Section label="Tasks">
               <ol className="flex flex-col gap-2" style={{ listStyle: "none", padding: 0 }}>
-                {workflow.tasks.map((t) => (
+                {workflow.tasks.map((t, i) => (
                   <li
                     key={t.n}
+                    className="group"
                     style={{ background: "#F7FAF2", borderRadius: 10, padding: "10px 12px" }}
                   >
                     <div className="flex items-start gap-2">
@@ -172,112 +335,238 @@ export function DetailPanel({
                           alignItems: "center",
                           justifyContent: "center",
                           flexShrink: 0,
+                          marginTop: 2,
                         }}
                       >
                         {t.n}
                       </span>
-                      <div style={{ fontSize: 13, color: "#3B4953", lineHeight: 1.4 }}>{t.text}</div>
-                    </div>
-                    {t.note && (
-                      <div
-                        style={{
-                          ...dmSerif,
-                          fontSize: 12,
-                          color: "#547863",
-                          marginTop: 6,
-                          marginLeft: 28,
-                        }}
-                      >
-                        {t.note}
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <InlineInput
+                          value={t.text}
+                          onChange={(v) => {
+                            const tasks = [...workflow.tasks];
+                            tasks[i] = { ...tasks[i], text: v };
+                            update({ tasks });
+                          }}
+                          placeholder="Task description"
+                          style={{ fontSize: 13, color: "#3B4953" }}
+                        />
+                        <InlineInput
+                          value={t.note ?? ""}
+                          onChange={(v) => {
+                            const tasks = [...workflow.tasks];
+                            tasks[i] = { ...tasks[i], note: v || undefined };
+                            update({ tasks });
+                          }}
+                          placeholder="Add a note…"
+                          style={{ ...dmSerif, fontSize: 11, color: "#547863", marginTop: 4 }}
+                        />
                       </div>
-                    )}
+                      <button
+                        onClick={() => {
+                          const tasks = workflow.tasks
+                            .filter((_, j) => j !== i)
+                            .map((t, j) => ({ ...t, n: j + 1 }));
+                          update({ tasks });
+                        }}
+                        className="opacity-0 group-hover:opacity-100 hover:bg-[#EBF4DD] rounded p-0.5"
+                        style={{ color: "#90AB8B", flexShrink: 0 }}
+                        aria-label="Remove task"
+                      >
+                        <X size={12} />
+                      </button>
+                    </div>
                   </li>
                 ))}
               </ol>
+              <button
+                onClick={() => {
+                  update({
+                    tasks: [...workflow.tasks, { n: workflow.tasks.length + 1, text: "" }],
+                  });
+                }}
+                className="flex items-center gap-1 hover:bg-[#EBF4DD] rounded-md transition-colors"
+                style={{ fontSize: 12, color: "#547863", marginTop: 8, padding: "4px 8px" }}
+              >
+                <Plus size={12} />
+                Add task
+              </button>
             </Section>
 
+            {/* Inputs */}
             <Section label="Inputs">
-              <div className="flex flex-wrap gap-1.5">
-                {workflow.inputs.map((i) => (
-                  <Tag key={i.name}>
-                    {i.name}
-                    <span style={{ color: "#90AB8B" }}>· {i.source}</span>
-                  </Tag>
+              <div className="flex flex-col gap-1.5">
+                {workflow.inputs.map((inp, i) => (
+                  <div
+                    key={i}
+                    className="group flex items-center gap-2"
+                    style={{
+                      background: "#F7FAF2",
+                      border: "1px solid #EBF4DD",
+                      borderRadius: 8,
+                      padding: "6px 10px",
+                    }}
+                  >
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <InlineInput
+                        value={inp.name}
+                        onChange={(v) => {
+                          const inputs = [...workflow.inputs];
+                          inputs[i] = { ...inputs[i], name: v };
+                          update({ inputs });
+                        }}
+                        placeholder="Input name"
+                        style={{ fontSize: 12, color: "#3B4953", fontWeight: 500 }}
+                      />
+                      <InlineInput
+                        value={inp.source}
+                        onChange={(v) => {
+                          const inputs = [...workflow.inputs];
+                          inputs[i] = { ...inputs[i], source: v };
+                          update({ inputs });
+                        }}
+                        placeholder="Source"
+                        style={{ fontSize: 11, color: "#90AB8B" }}
+                      />
+                    </div>
+                    <button
+                      onClick={() => update({ inputs: workflow.inputs.filter((_, j) => j !== i) })}
+                      className="opacity-0 group-hover:opacity-100 hover:bg-[#EBF4DD] rounded p-0.5"
+                      style={{ color: "#90AB8B", flexShrink: 0 }}
+                    >
+                      <X size={12} />
+                    </button>
+                  </div>
                 ))}
+                <button
+                  onClick={() => update({ inputs: [...workflow.inputs, { name: "", source: "" }] })}
+                  className="flex items-center gap-1 hover:bg-[#EBF4DD] rounded-md transition-colors"
+                  style={{ fontSize: 12, color: "#547863", padding: "4px 8px" }}
+                >
+                  <Plus size={12} />
+                  Add input
+                </button>
               </div>
             </Section>
 
+            {/* Outputs */}
             <Section label="Outputs">
-              <div className="flex flex-wrap gap-1.5">
-                {workflow.outputs.map((o) => (
-                  <Tag key={o.name}>
-                    {o.name}
-                    <span style={{ color: "#90AB8B" }}>· {o.source}</span>
-                  </Tag>
+              <div className="flex flex-col gap-1.5">
+                {workflow.outputs.map((out, i) => (
+                  <div
+                    key={i}
+                    className="group flex items-center gap-2"
+                    style={{
+                      background: "#F7FAF2",
+                      border: "1px solid #EBF4DD",
+                      borderRadius: 8,
+                      padding: "6px 10px",
+                    }}
+                  >
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <InlineInput
+                        value={out.name}
+                        onChange={(v) => {
+                          const outputs = [...workflow.outputs];
+                          outputs[i] = { ...outputs[i], name: v };
+                          update({ outputs });
+                        }}
+                        placeholder="Output name"
+                        style={{ fontSize: 12, color: "#3B4953", fontWeight: 500 }}
+                      />
+                      <InlineInput
+                        value={out.source}
+                        onChange={(v) => {
+                          const outputs = [...workflow.outputs];
+                          outputs[i] = { ...outputs[i], source: v };
+                          update({ outputs });
+                        }}
+                        placeholder="Destination"
+                        style={{ fontSize: 11, color: "#90AB8B" }}
+                      />
+                    </div>
+                    <button
+                      onClick={() => update({ outputs: workflow.outputs.filter((_, j) => j !== i) })}
+                      className="opacity-0 group-hover:opacity-100 hover:bg-[#EBF4DD] rounded p-0.5"
+                      style={{ color: "#90AB8B", flexShrink: 0 }}
+                    >
+                      <X size={12} />
+                    </button>
+                  </div>
                 ))}
+                <button
+                  onClick={() => update({ outputs: [...workflow.outputs, { name: "", source: "" }] })}
+                  className="flex items-center gap-1 hover:bg-[#EBF4DD] rounded-md transition-colors"
+                  style={{ fontSize: 12, color: "#547863", padding: "4px 8px" }}
+                >
+                  <Plus size={12} />
+                  Add output
+                </button>
               </div>
             </Section>
 
+            {/* Tools */}
             <Section label="Tools">
               <div className="flex flex-wrap gap-1.5">
-                {workflow.tools.map((t) => (
-                  <Tag key={t} color="#3B4953" text="#FFFFFF">
+                {workflow.tools.map((t, i) => (
+                  <span
+                    key={i}
+                    className="group flex items-center gap-1"
+                    style={{
+                      background: "#3B4953",
+                      color: "#FFFFFF",
+                      fontSize: 11,
+                      padding: "3px 9px",
+                      borderRadius: 999,
+                    }}
+                  >
                     {t}
-                  </Tag>
+                    <button
+                      onClick={() => update({ tools: workflow.tools.filter((_, j) => j !== i) })}
+                      className="opacity-0 group-hover:opacity-60 transition-opacity"
+                      style={{ color: "#EBF4DD", display: "flex", marginLeft: 2 }}
+                      aria-label={`Remove ${t}`}
+                    >
+                      <X size={10} />
+                    </button>
+                  </span>
                 ))}
+                <AddToolInput
+                  onAdd={(tool) => update({ tools: [...workflow.tools, tool] })}
+                />
               </div>
             </Section>
 
+            {/* Automation potential */}
             <Section label="Automation potential">
-              <div className="flex items-center gap-2" style={{ marginBottom: 8 }}>
-                <div
-                  style={{
-                    flex: 1,
-                    height: 8,
-                    background: "#EBF4DD",
-                    borderRadius: 999,
-                    overflow: "hidden",
-                  }}
-                >
-                  <div
-                    style={{
-                      width: `${workflow.automationScore}%`,
-                      height: "100%",
-                      background: workflow.automationScore >= 70 ? "#547863" : "#90AB8B",
-                      borderRadius: 999,
-                      transition: "width 400ms ease",
-                    }}
-                  />
-                </div>
-                <span
-                  style={{
-                    fontSize: 13,
-                    color: "#3B4953",
-                    fontWeight: 500,
-                    minWidth: 36,
-                    textAlign: "right",
-                  }}
-                >
+              <div className="flex items-center gap-3" style={{ marginBottom: 10 }}>
+                <input
+                  type="range"
+                  min={0}
+                  max={100}
+                  value={workflow.automationScore}
+                  onChange={(e) => update({ automationScore: Number(e.target.value) })}
+                  style={{ flex: 1, accentColor: "#547863" }}
+                />
+                <span style={{ fontSize: 13, color: "#3B4953", fontWeight: 500, minWidth: 36, textAlign: "right" }}>
                   {workflow.automationScore}%
                 </span>
                 {workflow.automationScore >= 70 && (
                   <Zap size={14} fill="#547863" strokeWidth={0} />
                 )}
               </div>
-              <div style={{ fontSize: 12, color: "#547863", lineHeight: 1.45 }}>
-                {workflow.automationRationale}
-              </div>
+              <InlineTextarea
+                value={workflow.automationRationale}
+                onChange={(v) => update({ automationRationale: v })}
+                placeholder="Why is this automatable?"
+                rows={2}
+                style={{ fontSize: 12, color: "#547863" }}
+              />
             </Section>
           </div>
 
-          <div
-            style={{
-              borderTop: "1px solid #EBF4DD",
-              padding: 12,
-              display: "flex",
-              gap: 8,
-            }}
-          >
+          {/* Footer */}
+          <div style={{ borderTop: "1px solid #EBF4DD", padding: 12, display: "flex", gap: 8 }}>
             <button
               onClick={() => onChain(workflow.id)}
               className="flex items-center justify-center gap-2 hover:bg-[#EBF4DD] transition-colors"

@@ -119,6 +119,10 @@ export default function Home() {
     setStarted(true);
   };
 
+  const handleUpdate = (id: string, changes: Partial<Workflow>) => {
+    setWorkflows((prev) => prev.map((w) => (w.id === id ? { ...w, ...changes } : w)));
+  };
+
   const handleDelete = (id: string) => {
     setWorkflows((prev) => prev.filter((w) => w.id !== id));
     setConnections((prev) => prev.filter((c) => c.from !== id && c.to !== id));
@@ -234,6 +238,7 @@ export default function Home() {
             onExport={(id) => setExportTarget({ id })}
             onChain={handleStartChain}
             onDelete={handleDelete}
+            onUpdate={handleUpdate}
           />
         </div>
       </div>
