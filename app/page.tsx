@@ -1,65 +1,233 @@
-import Image from "next/image";
+"use client";
+
+import { useMemo, useState } from "react";
+import { Canvas } from "./components/canvas";
+import { TopBar, type View } from "./components/top-bar";
+import { Sidebar } from "./components/sidebar";
+import { DetailPanel } from "./components/detail-panel";
+import { ExportModal } from "./components/export-modal";
+import { LibraryView } from "./components/library-view";
+import { Landing } from "./components/landing";
+import { type Workflow, type Theme } from "@/lib/workflows";
+import { useWorkflows } from "@/lib/use-workflows";
+import { workflowToMarkdown, allWorkflowsToMarkdown } from "@/lib/markdown";
+
+function inferTheme(text: string): Theme {
+  const t = text.toLowerCase();
+  if (/(invoice|payment|finance|tax|expense|budget)/.test(t)) return "finance";
+  if (/(content|newsletter|campaign|seo|brand|social|marketing)/.test(t)) return "marketing";
+  if (/(vendor|onboard|ops|operations|inventory|fulfil|fulfill)/.test(t)) return "operations";
+  return "sales";
+}
+
+function generateWorkflow(id: string, description: string, clarification?: string): Workflow {
+  const theme = inferTheme(description + " " + (clarification ?? ""));
+  const firstSentence = description.split(/[.!?]/)[0].trim();
+  const name =
+    firstSentence.length > 0 && firstSentence.length < 60
+      ? firstSentence.replace(/^./, (c) => c.toUpperCase())
+      : "New workflow";
+
+  const ownerMatch = clarification?.match(/own(?:ed|er)[^,]*by\s+([A-Za-z ]+)/i);
+  const toolMatch = clarification?.match(/(?:use[s]?|with|via|tools?)[\s:]+([A-Za-z0-9, +&]+)/i);
+  const tools = toolMatch
+    ? toolMatch[1].split(/[,+&]/).map((t) => t.trim()).filter(Boolean).slice(0, 4)
+    : ["Notion", "Slack"];
+  const owner = ownerMatch ? ownerMatch[1].trim() : "Unassigned";
+
+  return {
+    id,
+    theme,
+    name,
+    owner,
+    frequency: "Per event",
+    why: description.trim() || "Recently captured workflow — review and refine the details.",
+    when: "Triggered manually for now. Define an automatic trigger when ready.",
+    inputs: [
+      { name: "Trigger event", source: "Manual" },
+      { name: "Reference docs", source: "Notion" },
+    ],
+    tasks: [
+      { n: 1, text: "Receive request" },
+      { n: 2, text: "Process & verify", note: "Flag exceptions for human review" },
+      { n: 3, text: "Complete & log" },
+    ],
+    outputs: [
+      { name: "Completed record", source: tools[0] ?? "Notion" },
+      { name: "Notification", source: "Slack" },
+    ],
+    tools,
+    automationScore: 65,
+    automationRationale:
+      "Initial estimate — refine after you map the steps and tools more precisely.",
+    x: 0,
+    y: 0,
+  };
+}
 
 export default function Home() {
+  const { workflows, setWorkflows, connections, setConnections } = useWorkflows();
+  const [started, setStarted] = useState(false);
+  const [view, setView] = useState<View>("canvas");
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [focusId, setFocusId] = useState<string | null>(null);
+  const [themeFilter, setThemeFilter] = useState<Theme | null>(null);
+  const [connectMode, setConnectMode] = useState<{ fromId: string } | null>(null);
+  const [newOpen, setNewOpen] = useState(false);
+  const [exportTarget, setExportTarget] = useState<"all" | { id: string } | null>(null);
+
+  const selected = useMemo(
+    () => workflows.find((w) => w.id === selectedId) ?? null,
+    [workflows, selectedId]
+  );
+
+  const handleSelectFromSidebar = (id: string) => {
+    setSelectedId(id);
+    if (view === "canvas") setFocusId(id + ":" + Date.now());
+  };
+
+  const handleOpenFromLibrary = (id: string) => {
+    setSelectedId(id);
+    setView("canvas");
+    setFocusId(id + ":" + Date.now());
+  };
+
+  const handleMap = (description: string, clarification?: string) => {
+    const id = `wf-${Date.now()}`;
+    const newWf = generateWorkflow(id, description, clarification);
+    const maxX = workflows.length > 0 ? Math.max(...workflows.map((w) => w.x)) : 0;
+    newWf.x = maxX + 800;
+    newWf.y = 400;
+    setWorkflows((prev) => [...prev, newWf]);
+    setSelectedId(id);
+    setView("canvas");
+    setFocusId(id + ":" + Date.now());
+    setNewOpen(false);
+    setStarted(true);
+  };
+
+  const handleDelete = (id: string) => {
+    setWorkflows((prev) => prev.filter((w) => w.id !== id));
+    setConnections((prev) => prev.filter((c) => c.from !== id && c.to !== id));
+    if (selectedId === id) setSelectedId(null);
+    if (connectMode?.fromId === id) setConnectMode(null);
+  };
+
+  const handleStartChain = (fromId: string) => {
+    setConnectMode({ fromId });
+    setSelectedId(null);
+    setView("canvas");
+  };
+
+  const handleCreateConnection = (fromId: string, toId: string) => {
+    const exists = connections.some((c) => c.from === fromId && c.to === toId);
+    if (!exists) {
+      setConnections((prev) => [...prev, { from: fromId, to: toId, label: "Triggers" }]);
+    }
+    setConnectMode(null);
+    setSelectedId(toId);
+  };
+
+  const handleDeleteConnection = (fromId: string, toId: string) => {
+    setConnections((prev) => prev.filter((c) => !(c.from === fromId && c.to === toId)));
+  };
+
+  const exportTitle =
+    exportTarget === "all"
+      ? "Export · all workflows"
+      : exportTarget && "id" in exportTarget
+      ? `Export · ${workflows.find((w) => w.id === exportTarget.id)?.name ?? "workflow"}`
+      : "";
+
+  const exportMarkdown = useMemo(() => {
+    if (exportTarget === "all") return allWorkflowsToMarkdown(workflows);
+    if (exportTarget && "id" in exportTarget) {
+      const w = workflows.find((x) => x.id === exportTarget.id);
+      return w ? workflowToMarkdown(w) : "";
+    }
+    return "";
+  }, [exportTarget, workflows]);
+
+  if (!started) {
+    return (
+      <Landing
+        mode="fullscreen"
+        onMap={handleMap}
+        onSkip={() => setStarted(true)}
+      />
+    );
+  }
+
   return (
-    <div className="flex flex-col flex-1 items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex flex-1 w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
+    <div
+      className="size-full min-h-screen flex flex-col"
+      style={{ background: "#F7FAF2", fontFamily: "var(--font-dm-sans), sans-serif" }}
+    >
+      <TopBar
+        view={view}
+        onView={setView}
+        onExport={() => setExportTarget("all")}
+        onNew={() => setNewOpen(true)}
+      />
+
+      <div className="flex flex-1 overflow-hidden">
+        <Sidebar
+          workflows={workflows}
+          selectedId={selectedId}
+          themeFilter={themeFilter}
+          onSelect={handleSelectFromSidebar}
+          onThemeFilter={setThemeFilter}
         />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the page.tsx file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
-          </p>
+
+        <div className="relative flex-1 flex overflow-hidden">
+          <div className="flex-1 relative overflow-hidden">
+            {view === "canvas" ? (
+              <Canvas
+                workflows={workflows}
+                connections={connections}
+                selectedId={selectedId}
+                themeFilter={themeFilter}
+                connectMode={connectMode}
+                onSelect={setSelectedId}
+                onCreateConnection={handleCreateConnection}
+                onDeleteConnection={handleDeleteConnection}
+                onCancelConnect={() => setConnectMode(null)}
+                focusId={focusId}
+              />
+            ) : (
+              <LibraryView
+                workflows={workflows}
+                themeFilter={themeFilter}
+                onOpen={handleOpenFromLibrary}
+                onDelete={handleDelete}
+              />
+            )}
+          </div>
+
+          <DetailPanel
+            workflow={selected}
+            onClose={() => setSelectedId(null)}
+            onExport={(id) => setExportTarget({ id })}
+            onChain={handleStartChain}
+            onDelete={handleDelete}
+          />
         </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={16}
-            />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
-        </div>
-      </main>
+      </div>
+
+      {newOpen && (
+        <Landing
+          mode="modal"
+          onMap={handleMap}
+          onCancel={() => setNewOpen(false)}
+        />
+      )}
+
+      <ExportModal
+        open={exportTarget !== null}
+        title={exportTitle}
+        markdown={exportMarkdown}
+        onClose={() => setExportTarget(null)}
+      />
     </div>
   );
 }
