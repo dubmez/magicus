@@ -33,7 +33,11 @@ export type Canvas = {
   workflowIds: string[];
   connections: Connection[];
   chainNames: Record<string, string>;
+  readOnly?: boolean;
 };
+
+export const EXAMPLES_CANVAS_ID = "canvas-examples";
+export const DEFAULT_CANVAS_ID = "canvas-default";
 
 // ─── Chain utilities ──────────────────────────────────────────────────────────
 
@@ -305,9 +309,17 @@ export const initialWorkflows: Workflow[] = [
   },
 ];
 
-export const initialCanvas: Canvas = {
-  id: "canvas-default",
+export const myBusinessCanvas: Canvas = {
+  id: DEFAULT_CANVAS_ID,
   name: "My Business",
+  workflowIds: [],
+  connections: [],
+  chainNames: {},
+};
+
+export const examplesCanvas: Canvas = {
+  id: EXAMPLES_CANVAS_ID,
+  name: "Examples",
   workflowIds: initialWorkflows.map((w) => w.id),
   connections: [
     { from: "qual", to: "discovery", label: "Qualified lead" },
@@ -315,4 +327,5 @@ export const initialCanvas: Canvas = {
     { from: "proposal", to: "close", label: "Proposal signed" },
   ],
   chainNames: {},
+  readOnly: true,
 };

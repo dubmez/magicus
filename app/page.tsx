@@ -9,7 +9,7 @@ import { ExportModal } from "./components/export-modal";
 import { AutomateModal } from "./components/automate-modal";
 import { LibraryView } from "./components/library-view";
 import { Landing } from "./components/landing";
-import { type Workflow, type Canvas as CanvasType, type Theme, chainKey } from "@/lib/workflows";
+import { type Workflow, type Canvas as CanvasType, type Theme, type Connection } from "@/lib/workflows";
 import { useWorkflows } from "@/lib/use-workflows";
 import { workflowToMarkdown, allWorkflowsToMarkdown } from "@/lib/markdown";
 
@@ -21,45 +21,44 @@ function inferTheme(text: string): Theme {
   return "sales";
 }
 
-function generateWorkflow(id: string, description: string): Workflow {
-  const theme = inferTheme(description);
-  const firstSentence = description.split(/[.!?]/)[0].trim();
-  const name =
-    firstSentence.length > 0 && firstSentence.length < 60
-      ? firstSentence.replace(/^./, (c) => c.toUpperCase())
-      : "New workflow";
-
-  const toolMatch = description.match(/(?:use[s]?|with|via|tools?)[\s:]+([A-Za-z0-9, +&]+)/i);
-  const tools = toolMatch
-    ? toolMatch[1].split(/[,+&]/).map((t) => t.trim()).filter(Boolean).slice(0, 4)
-    : ["Notion", "Slack"];
-
+function fallbackWorkflow(id: string, description: string): Workflow {
   return {
     id,
-    theme,
-    name,
+    theme: inferTheme(description),
+    name: description.split(/[.!?]/)[0].trim().slice(0, 60) || "New workflow",
     trigger: null,
-    why: description.trim() || "Recently captured workflow — review and refine the details.",
-    inputs: [
-      { name: "Trigger event", source: "Manual" },
-      { name: "Reference docs", source: "Notion" },
-    ],
-    steps: [
-      { n: 1, text: "Receive request" },
-      { n: 2, text: "Process & verify", note: "Flag exceptions for human review" },
-      { n: 3, text: "Complete & log" },
-    ],
-    outputs: [
-      { name: "Completed record", source: tools[0] ?? "Notion" },
-      { name: "Notification", source: "Slack" },
-    ],
-    tools,
-    automationScore: 65,
-    automationRationale:
-      "Initial estimate — refine after you map the steps and tools more precisely.",
+    why: description.trim(),
+    inputs: [],
+    steps: [],
+    outputs: [],
+    tools: [],
+    automationScore: 50,
+    automationRationale: "",
     x: 0,
     y: 0,
   };
+}
+
+type GeneratedWorkflow = Omit<Workflow, "x" | "y">;
+type GeneratedResponse = {
+  workflows: GeneratedWorkflow[];
+  connections: { from: string; to: string; label?: string }[];
+};
+
+async function generateFromAPI(description: string): Promise<GeneratedResponse | null> {
+  try {
+    const res = await fetch("/api/generate", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ description }),
+    });
+    if (!res.ok) return null;
+    const data = (await res.json()) as GeneratedResponse;
+    if (!data?.workflows || data.workflows.length === 0) return null;
+    return data;
+  } catch {
+    return null;
+  }
 }
 
 export default function Home() {
@@ -83,6 +82,8 @@ export default function Home() {
   const [newOpen, setNewOpen] = useState(false);
   const [exportTarget, setExportTarget] = useState<"all" | { id: string } | null>(null);
   const [automateOpen, setAutomateOpen] = useState(false);
+
+  const activeReadOnly = !!activeCanvas?.readOnly;
 
   // Workflows visible on the active canvas
   const activeWorkflows = useMemo(
@@ -185,31 +186,76 @@ export default function Home() {
     setFocusId(id + ":" + Date.now());
   };
 
-  const handleMap = (description: string) => {
-    const id = `wf-${Date.now()}`;
-    const newWf = generateWorkflow(id, description);
-    const maxX = activeWorkflows.length > 0
-      ? Math.max(...activeWorkflows.map((w) => w.x))
+  const handleMap = async (description: string) => {
+    // Never add new workflows to a read-only canvas — switch to the editable one
+    let targetCanvas = activeCanvas;
+    if (!targetCanvas || targetCanvas.readOnly) {
+      targetCanvas = canvases.find((c) => !c.readOnly) ?? targetCanvas;
+      if (targetCanvas) setActiveCanvasId(targetCanvas.id);
+    }
+    if (!targetCanvas) return;
+
+    const targetWorkflows = workflows.filter((w) => targetCanvas!.workflowIds.includes(w.id));
+    const baseX = targetWorkflows.length > 0
+      ? Math.max(...targetWorkflows.map((w) => w.x)) + 800
       : 0;
-    newWf.x = maxX + 800;
-    newWf.y = 400;
-    setWorkflows((prev) => [...prev, newWf]);
-    updateActiveCanvas({
-      workflowIds: [...(activeCanvas?.workflowIds ?? []), id],
+    const baseY = 400;
+
+    const generated = await generateFromAPI(description);
+    const now = Date.now();
+
+    let newWorkflows: Workflow[];
+    let newConnections: Connection[] = [];
+    let firstId: string;
+
+    if (generated) {
+      // Map LLM-local ids → real ids
+      const idMap = new Map<string, string>();
+      generated.workflows.forEach((w, i) => {
+        idMap.set(w.id, `wf-${now}-${i}`);
+      });
+      newWorkflows = generated.workflows.map((w, i) => ({
+        ...w,
+        id: idMap.get(w.id)!,
+        x: baseX + i * 800,
+        y: baseY + (i % 2 === 0 ? 0 : 120),
+      }));
+      newConnections = generated.connections.flatMap<Connection>((c) => {
+        const from = idMap.get(c.from);
+        const to = idMap.get(c.to);
+        if (!from || !to) return [];
+        return [{ from, to, label: c.label ?? "Triggers" }];
+      });
+      firstId = newWorkflows[0].id;
+    } else {
+      const id = `wf-${now}`;
+      const wf = fallbackWorkflow(id, description);
+      wf.x = baseX;
+      wf.y = baseY;
+      newWorkflows = [wf];
+      firstId = id;
+    }
+
+    setWorkflows((prev) => [...prev, ...newWorkflows]);
+    updateCanvas(targetCanvas.id, {
+      workflowIds: [...targetCanvas.workflowIds, ...newWorkflows.map((w) => w.id)],
+      connections: [...targetCanvas.connections, ...newConnections],
     });
-    setSelectedId(id);
+    setSelectedId(firstId);
     setSelectedIds(new Set());
     setView("canvas");
-    setFocusId(id + ":" + Date.now());
+    setFocusId(firstId + ":" + now);
     setNewOpen(false);
     setStarted(true);
   };
 
   const handleUpdate = (id: string, changes: Partial<Workflow>) => {
+    if (activeReadOnly) return;
     setWorkflows((prev) => prev.map((w) => (w.id === id ? { ...w, ...changes } : w)));
   };
 
   const handleDelete = (id: string) => {
+    if (activeReadOnly) return;
     setWorkflows((prev) => prev.filter((w) => w.id !== id));
     setCanvases((prev) =>
       prev.map((c) => ({
@@ -226,13 +272,14 @@ export default function Home() {
   // ── Connection handlers ───────────────────────────────────────────────────
 
   const handleStartChain = (fromId: string) => {
+    if (activeReadOnly) return;
     setConnectMode({ fromId });
     setSelectedId(null);
     setView("canvas");
   };
 
   const handleCreateConnection = (fromId: string, toId: string) => {
-    if (!activeCanvas) return;
+    if (!activeCanvas || activeReadOnly) return;
     const exists = activeCanvas.connections.some(
       (c) => c.from === fromId && c.to === toId
     );
@@ -254,7 +301,7 @@ export default function Home() {
   };
 
   const handleDeleteConnection = (fromId: string, toId: string) => {
-    if (!activeCanvas) return;
+    if (!activeCanvas || activeReadOnly) return;
     const newConns = activeCanvas.connections.filter(
       (c) => !(c.from === fromId && c.to === toId)
     );
@@ -269,6 +316,7 @@ export default function Home() {
   };
 
   const handleUpdateChainName = (key: string, name: string) => {
+    if (activeReadOnly) return;
     updateActiveCanvas({
       chainNames: { ...activeCanvas.chainNames, [key]: name },
     });
@@ -376,6 +424,7 @@ export default function Home() {
           <DetailPanel
             workflow={selected}
             incomingWorkflows={incomingWorkflows}
+            readOnly={activeReadOnly}
             onClose={() => setSelectedId(null)}
             onExport={(id) => setExportTarget({ id })}
             onChain={handleStartChain}

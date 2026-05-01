@@ -108,20 +108,17 @@ export function ButterflyCard({
         </div>
       )}
 
-      {incomplete && !showAutomatable && (
+      {incomplete && (
         <div
-          className="absolute z-20"
+          aria-hidden
+          className="absolute"
           style={{
-            top: -4,
-            right: -4,
-            width: 12,
-            height: 12,
-            borderRadius: 999,
-            background: "#F59E0B",
-            border: "2px solid #FFFFFF",
-            boxShadow: "0 1px 4px rgba(59,73,83,0.2)",
+            inset: 0,
+            borderRadius: 24,
+            border: "1.5px dashed #C99461",
+            pointerEvents: "none",
+            zIndex: 30,
           }}
-          title="Trigger not yet defined"
         />
       )}
 

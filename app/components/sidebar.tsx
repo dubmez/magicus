@@ -17,11 +17,13 @@ const dmSerif = { fontFamily: "var(--font-dm-serif), serif", fontStyle: "italic"
 function CanvasName({
   name,
   active,
+  readOnly = false,
   onRename,
   onClick,
 }: {
   name: string;
   active: boolean;
+  readOnly?: boolean;
   onRename: (name: string) => void;
   onClick: () => void;
 }) {
@@ -65,8 +67,8 @@ function CanvasName({
   return (
     <button
       onClick={onClick}
-      onDoubleClick={() => { setEditing(true); }}
-      className="flex-1 text-left truncate transition-colors"
+      onDoubleClick={() => { if (!readOnly) setEditing(true); }}
+      className="flex-1 text-left truncate transition-colors flex items-center gap-2 min-w-0"
       style={{
         ...dmSerif,
         fontSize: 14,
@@ -77,9 +79,29 @@ function CanvasName({
         padding: 0,
         cursor: "pointer",
       }}
-      title="Click to switch · Double-click to rename"
+      title={readOnly ? "Read-only" : "Click to switch · Double-click to rename"}
     >
-      {name}
+      <span className="truncate" style={{ opacity: readOnly ? 0.85 : 1 }}>{name}</span>
+      {readOnly && (
+        <span
+          style={{
+            fontSize: 9,
+            fontWeight: 600,
+            color: "#90AB8B",
+            background: "#F7FAF2",
+            border: "1px solid #EBF4DD",
+            borderRadius: 4,
+            padding: "1px 5px",
+            letterSpacing: 0.6,
+            textTransform: "uppercase",
+            fontStyle: "normal",
+            fontFamily: "var(--font-dm-sans), sans-serif",
+            flexShrink: 0,
+          }}
+        >
+          Examples
+        </span>
+      )}
     </button>
   );
 }
@@ -385,6 +407,7 @@ export function Sidebar({
                 <CanvasName
                   name={canvas.name}
                   active={isActive}
+                  readOnly={canvas.readOnly}
                   onRename={(name) => onRenameCanvas(canvas.id, name)}
                   onClick={() => onSwitchCanvas(canvas.id)}
                 />

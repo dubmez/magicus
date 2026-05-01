@@ -1,7 +1,15 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { initialWorkflows, initialCanvas, type Workflow, type Canvas } from "./workflows";
+import {
+  initialWorkflows,
+  myBusinessCanvas,
+  examplesCanvas,
+  EXAMPLES_CANVAS_ID,
+  DEFAULT_CANVAS_ID,
+  type Workflow,
+  type Canvas,
+} from "./workflows";
 
 const WF_KEY = "magicus:workflows";
 const CANVAS_KEY = "magicus:canvases";
@@ -35,22 +43,30 @@ function migrateWorkflows(wfs: Workflow[]): Workflow[] {
 
 function initWorkflows(): Workflow[] {
   const stored = readLocal<Workflow[]>(WF_KEY, []);
-  if (stored.length > 0) return migrateWorkflows(stored);
-  return initialWorkflows;
+  const base = stored.length > 0 ? migrateWorkflows(stored) : initialWorkflows;
+  // Ensure all initial workflows are present so the Examples canvas always has them
+  const have = new Set(base.map((w) => w.id));
+  const missing = initialWorkflows.filter((w) => !have.has(w.id));
+  return missing.length > 0 ? [...base, ...missing] : base;
 }
 
-function initCanvases(wfs: Workflow[]): Canvas[] {
+function initCanvases(): Canvas[] {
   const stored = readLocal<Canvas[]>(CANVAS_KEY, []);
-  if (stored.length > 0) return stored;
-  // First run or migration from old flat format
-  const oldConns = readLocal<Canvas["connections"]>("magicus:connections", []);
-  return [
-    {
-      ...initialCanvas,
-      workflowIds: wfs.map((w) => w.id),
-      connections: oldConns.length > 0 ? oldConns : initialCanvas.connections,
-    },
-  ];
+
+  if (stored.length === 0) {
+    // First run: empty My Business + populated read-only Examples
+    return [{ ...myBusinessCanvas }, { ...examplesCanvas }];
+  }
+
+  // Existing user — keep their canvases, ensure Examples canvas exists and is read-only
+  const out = [...stored];
+  const idx = out.findIndex((c) => c.id === EXAMPLES_CANVAS_ID);
+  if (idx === -1) {
+    out.push({ ...examplesCanvas });
+  } else if (!out[idx].readOnly) {
+    out[idx] = { ...out[idx], readOnly: true };
+  }
+  return out;
 }
 
 export function useWorkflows() {
@@ -59,15 +75,15 @@ export function useWorkflows() {
     return wfs;
   });
 
-  const [canvases, setCanvases] = useState<Canvas[]>(() => {
-    const wfs = initWorkflows();
-    return initCanvases(wfs);
-  });
+  const [canvases, setCanvases] = useState<Canvas[]>(() => initCanvases());
 
   const [activeCanvasId, setActiveCanvasId] = useState<string>(() => {
-    const cvs = initCanvases(initWorkflows());
+    const cvs = initCanvases();
     const stored = readLocal<string>(ACTIVE_KEY, "");
-    return cvs.find((c) => c.id === stored) ? stored : (cvs[0]?.id ?? "");
+    if (cvs.find((c) => c.id === stored)) return stored;
+    // Default to the user's editable canvas, not Examples
+    const editable = cvs.find((c) => !c.readOnly);
+    return editable?.id ?? cvs[0]?.id ?? DEFAULT_CANVAS_ID;
   });
 
   useEffect(() => {

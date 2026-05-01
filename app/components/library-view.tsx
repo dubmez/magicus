@@ -172,19 +172,7 @@ export function LibraryView({
                 <div style={{ fontSize: 12, color: "#547863", textTransform: "capitalize" }}>
                   {THEME_META[w.theme].label}
                 </div>
-                <div className="flex items-center gap-2" style={{ minWidth: 0 }}>
-                  {incomplete && (
-                    <span
-                      style={{
-                        width: 7,
-                        height: 7,
-                        borderRadius: 999,
-                        background: "#F59E0B",
-                        flexShrink: 0,
-                      }}
-                      title="Trigger not yet defined"
-                    />
-                  )}
+                <div className="flex items-center" style={{ minWidth: 0 }}>
                   <span
                     style={{
                       fontSize: 12,
@@ -194,6 +182,7 @@ export function LibraryView({
                       overflow: "hidden",
                       textOverflow: "ellipsis",
                     }}
+                    title={incomplete ? "Trigger not yet defined" : undefined}
                   >
                     {triggerLabel(w.trigger)}
                   </span>

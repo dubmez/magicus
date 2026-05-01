@@ -31,11 +31,13 @@ function InlineInput({
   value,
   onChange,
   placeholder,
+  readOnly = false,
   style,
 }: {
   value: string;
   onChange: (v: string) => void;
   placeholder?: string;
+  readOnly?: boolean;
   style?: React.CSSProperties;
 }) {
   const [focused, setFocused] = useState(false);
@@ -44,12 +46,13 @@ function InlineInput({
       value={value}
       onChange={(e) => onChange(e.target.value)}
       placeholder={placeholder}
+      readOnly={readOnly}
       onFocus={() => setFocused(true)}
       onBlur={() => setFocused(false)}
       style={{
         background: "transparent",
         border: "none",
-        borderBottom: `1px solid ${focused ? "#547863" : "#EBF4DD"}`,
+        borderBottom: `1px solid ${focused && !readOnly ? "#547863" : "#EBF4DD"}`,
         outline: "none",
         fontFamily: "inherit",
         color: "inherit",
@@ -57,6 +60,7 @@ function InlineInput({
         lineHeight: "inherit",
         width: "100%",
         padding: "2px 0",
+        cursor: readOnly ? "default" : "text",
         ...style,
       }}
     />
@@ -68,36 +72,41 @@ function InlineTextarea({
   onChange,
   placeholder,
   rows = 3,
+  readOnly = false,
   style,
 }: {
   value: string;
   onChange: (v: string) => void;
   placeholder?: string;
   rows?: number;
+  readOnly?: boolean;
   style?: React.CSSProperties;
 }) {
   const [focused, setFocused] = useState(false);
+  const showFocus = focused && !readOnly;
   return (
     <textarea
       value={value}
       onChange={(e) => onChange(e.target.value)}
       placeholder={placeholder}
+      readOnly={readOnly}
       rows={rows}
       onFocus={() => setFocused(true)}
       onBlur={() => setFocused(false)}
       style={{
-        background: focused ? "#F7FAF2" : "transparent",
-        border: `1px solid ${focused ? "#547863" : "transparent"}`,
+        background: showFocus ? "#F7FAF2" : "transparent",
+        border: `1px solid ${showFocus ? "#547863" : "transparent"}`,
         borderRadius: 8,
         outline: "none",
         fontFamily: "inherit",
         color: "#3B4953",
         fontSize: 13,
         width: "100%",
-        padding: focused ? "8px 10px" : "0",
+        padding: showFocus ? "8px 10px" : "0",
         resize: "none",
         lineHeight: 1.55,
         transition: "background 0.12s, border 0.12s, padding 0.12s",
+        cursor: readOnly ? "default" : "text",
         ...style,
       }}
     />
@@ -268,6 +277,7 @@ function TriggerPicker({
 export function DetailPanel({
   workflow,
   incomingWorkflows = [],
+  readOnly = false,
   onClose,
   onExport,
   onChain,
@@ -276,6 +286,7 @@ export function DetailPanel({
 }: {
   workflow: Workflow | null;
   incomingWorkflows?: Workflow[];
+  readOnly?: boolean;
   onClose: () => void;
   onExport: (id: string) => void;
   onChain: (id: string) => void;
@@ -283,8 +294,11 @@ export function DetailPanel({
   onUpdate: (id: string, changes: Partial<Workflow>) => void;
 }) {
   const update = useCallback(
-    (changes: Partial<Workflow>) => { if (workflow) onUpdate(workflow.id, changes); },
-    [workflow, onUpdate]
+    (changes: Partial<Workflow>) => {
+      if (readOnly || !workflow) return;
+      onUpdate(workflow.id, changes);
+    },
+    [workflow, onUpdate, readOnly]
   );
 
   const open = !!workflow;
@@ -350,14 +364,16 @@ export function DetailPanel({
             </div>
 
             <div className="flex items-center gap-1" style={{ marginTop: 4 }}>
-              <button
-                onClick={() => onDelete(workflow.id)}
-                className="hover:bg-[#EBF4DD] rounded-md p-1.5"
-                style={{ color: "#90AB8B" }}
-                aria-label="Delete workflow"
-              >
-                <Trash2 size={15} />
-              </button>
+              {!readOnly && (
+                <button
+                  onClick={() => onDelete(workflow.id)}
+                  className="hover:bg-[#EBF4DD] rounded-md p-1.5"
+                  style={{ color: "#90AB8B" }}
+                  aria-label="Delete workflow"
+                >
+                  <Trash2 size={15} />
+                </button>
+              )}
               <button
                 onClick={onClose}
                 className="hover:bg-[#EBF4DD] rounded-md p-1.5"
@@ -369,8 +385,32 @@ export function DetailPanel({
             </div>
           </div>
 
+          {readOnly && (
+            <div
+              style={{
+                padding: "8px 20px",
+                fontSize: 11,
+                color: "#90AB8B",
+                background: "#F7FAF2",
+                borderBottom: "1px solid #EBF4DD",
+                fontStyle: "italic",
+              }}
+            >
+              Read-only — workflows on the Examples canvas can&apos;t be edited.
+            </div>
+          )}
+
           {/* Scrollable body */}
-          <div className="flex-1 overflow-y-auto" style={{ padding: "20px" }}>
+          <fieldset
+            disabled={readOnly}
+            className="flex-1 overflow-y-auto"
+            style={{
+              padding: "20px",
+              border: "none",
+              minWidth: 0,
+              opacity: readOnly ? 0.85 : 1,
+            }}
+          >
 
             {/* Trigger */}
             <Section label="Trigger">
@@ -651,10 +691,11 @@ export function DetailPanel({
                 style={{ fontSize: 12, color: "#547863" }}
               />
             </Section>
-          </div>
+          </fieldset>
 
           {/* Footer */}
           <div style={{ borderTop: "1px solid #EBF4DD", padding: 12, display: "flex", gap: 8 }}>
+            {!readOnly && (
             <button
               onClick={() => onChain(workflow.id)}
               className="flex items-center justify-center gap-2 hover:bg-[#EBF4DD] transition-colors"
@@ -673,6 +714,7 @@ export function DetailPanel({
               <Link2 size={14} />
               Chain →
             </button>
+            )}
             <button
               onClick={() => onExport(workflow.id)}
               className="flex-1 flex items-center justify-center gap-2 hover:opacity-90 transition-opacity"

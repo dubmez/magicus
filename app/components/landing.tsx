@@ -47,7 +47,7 @@ export function Landing({
   onSkip,
 }: {
   mode: "fullscreen" | "modal";
-  onMap: (description: string) => void;
+  onMap: (description: string) => void | Promise<void>;
   onCancel?: () => void;
   onSkip?: () => void;
 }) {
@@ -126,13 +126,15 @@ export function Landing({
     else startRecording();
   };
 
-  const submit = () => {
+  const submit = async () => {
     if (stage !== "idle" || text.trim().length === 0) return;
     if (isRecording) stopRecording();
     setStage("generating");
-    setTimeout(() => {
-      onMap(text);
-    }, 900);
+    try {
+      await onMap(text);
+    } catch {
+      setStage("idle");
+    }
   };
 
   const content = (
