@@ -1,8 +1,8 @@
 "use client";
 
 import { useCallback, useRef, useState } from "react";
-import { X, Download, Zap, Link2, Trash2, Plus, Check } from "lucide-react";
-import type { Workflow, Theme } from "@/lib/workflows";
+import { X, Download, Zap, Link2, Trash2, Plus, Check, Clock, Hand } from "lucide-react";
+import type { Workflow, Theme, Trigger } from "@/lib/workflows";
 import { THEME_META } from "@/lib/workflows";
 
 const dmSerif = { fontFamily: "var(--font-dm-serif), serif", fontStyle: "italic" as const };
@@ -147,8 +147,127 @@ function AddToolInput({ onAdd }: { onAdd: (tool: string) => void }) {
   );
 }
 
+function TriggerPicker({
+  trigger,
+  incomingWorkflows,
+  onChange,
+}: {
+  trigger: Trigger | null;
+  incomingWorkflows: Workflow[];
+  onChange: (t: Trigger | null) => void;
+}) {
+  const isChained = trigger?.type === "chained";
+
+  if (isChained) {
+    return (
+      <div
+        style={{
+          background: "#F7FAF2",
+          border: "1px solid #EBF4DD",
+          borderRadius: 10,
+          padding: "10px 12px",
+        }}
+      >
+        <div className="flex items-center gap-2" style={{ marginBottom: 6 }}>
+          <Link2 size={13} style={{ color: "#547863" }} />
+          <span style={{ fontSize: 12, color: "#3B4953", fontWeight: 500 }}>
+            Triggered by upstream workflow
+          </span>
+        </div>
+        {incomingWorkflows.length > 0 && (
+          <div style={{ fontSize: 11, color: "#547863", lineHeight: 1.4 }}>
+            {incomingWorkflows.map((w) => w.name).join(", ")}
+          </div>
+        )}
+        <div style={{ fontSize: 10, color: "#90AB8B", marginTop: 6, fontStyle: "italic" }}>
+          Disconnect on the canvas to change.
+        </div>
+      </div>
+    );
+  }
+
+  const types: { type: Trigger["type"]; icon: React.ComponentType<{ size?: number }>; label: string }[] = [
+    { type: "schedule", icon: Clock, label: "Schedule" },
+    { type: "event", icon: Zap, label: "Event" },
+    { type: "manual", icon: Hand, label: "Manual" },
+  ];
+
+  return (
+    <div>
+      <div className="flex gap-2" style={{ marginBottom: 10 }}>
+        {types.map(({ type, icon: Icon, label }) => {
+          const active = trigger?.type === type;
+          return (
+            <button
+              key={type}
+              onClick={() => onChange({ type, description: trigger?.description ?? "" })}
+              style={{
+                flex: 1,
+                padding: "8px 6px",
+                borderRadius: 8,
+                background: active ? "#3B4953" : "#F7FAF2",
+                color: active ? "#EBF4DD" : "#547863",
+                border: `1px solid ${active ? "#3B4953" : "#EBF4DD"}`,
+                fontSize: 11,
+                fontWeight: 500,
+                display: "flex",
+                flexDirection: "column",
+                alignItems: "center",
+                gap: 4,
+                cursor: "pointer",
+                transition: "background 0.12s, color 0.12s",
+              }}
+            >
+              <Icon size={14} />
+              {label}
+            </button>
+          );
+        })}
+      </div>
+      {trigger && (
+        <InlineTextarea
+          value={trigger.description ?? ""}
+          onChange={(v) => onChange({ type: trigger.type, description: v })}
+          placeholder={
+            trigger.type === "schedule"
+              ? "e.g. Every Monday at 9am"
+              : trigger.type === "event"
+              ? "e.g. New row added in Airtable"
+              : "e.g. Run on demand from Slack"
+          }
+          rows={2}
+        />
+      )}
+      {!trigger && (
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 6,
+            fontSize: 11,
+            color: "#90AB8B",
+            fontStyle: "italic",
+          }}
+        >
+          <span
+            style={{
+              width: 7,
+              height: 7,
+              borderRadius: 999,
+              background: "#F59E0B",
+              flexShrink: 0,
+            }}
+          />
+          Pick a trigger type to complete this workflow.
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function DetailPanel({
   workflow,
+  incomingWorkflows = [],
   onClose,
   onExport,
   onChain,
@@ -156,6 +275,7 @@ export function DetailPanel({
   onUpdate,
 }: {
   workflow: Workflow | null;
+  incomingWorkflows?: Workflow[];
   onClose: () => void;
   onExport: (id: string) => void;
   onChain: (id: string) => void;
@@ -252,49 +372,16 @@ export function DetailPanel({
           {/* Scrollable body */}
           <div className="flex-1 overflow-y-auto" style={{ padding: "20px" }}>
 
-            {/* Owner + Frequency */}
-            <div className="flex gap-2" style={{ marginBottom: 22 }}>
-              <div
-                style={{
-                  flex: 1,
-                  background: "#F7FAF2",
-                  border: "1px solid #EBF4DD",
-                  borderRadius: 8,
-                  padding: "6px 10px",
-                }}
-              >
-                <div style={{ fontSize: 9, color: "#90AB8B", textTransform: "uppercase", letterSpacing: 1, marginBottom: 2 }}>
-                  Owner
-                </div>
-                <InlineInput
-                  value={workflow.owner}
-                  onChange={(v) => update({ owner: v })}
-                  placeholder="Unassigned"
-                  style={{ fontSize: 12, color: "#3B4953", fontWeight: 500 }}
-                />
-              </div>
-              <div
-                style={{
-                  flex: 1,
-                  background: "#F7FAF2",
-                  border: "1px solid #EBF4DD",
-                  borderRadius: 8,
-                  padding: "6px 10px",
-                }}
-              >
-                <div style={{ fontSize: 9, color: "#90AB8B", textTransform: "uppercase", letterSpacing: 1, marginBottom: 2 }}>
-                  Trigger
-                </div>
-                <InlineInput
-                  value={workflow.frequency}
-                  onChange={(v) => update({ frequency: v })}
-                  placeholder="e.g. Per event"
-                  style={{ fontSize: 12, color: "#3B4953", fontWeight: 500 }}
-                />
-              </div>
-            </div>
+            {/* Trigger */}
+            <Section label="Trigger">
+              <TriggerPicker
+                trigger={workflow.trigger}
+                incomingWorkflows={incomingWorkflows}
+                onChange={(t) => update({ trigger: t })}
+              />
+            </Section>
 
-            <Section label="Why">
+            <Section label="Purpose">
               <InlineTextarea
                 value={workflow.why}
                 onChange={(v) => update({ why: v })}
@@ -303,16 +390,7 @@ export function DetailPanel({
               />
             </Section>
 
-            <Section label="When">
-              <InlineTextarea
-                value={workflow.when}
-                onChange={(v) => update({ when: v })}
-                placeholder="What triggers this workflow?"
-                rows={2}
-              />
-            </Section>
-
-            {/* Tasks */}
+            {/* Steps */}
             <Section label="Steps">
               <ol className="flex flex-col gap-2" style={{ listStyle: "none", padding: 0 }}>
                 {workflow.steps.map((t, i) => (
@@ -348,7 +426,7 @@ export function DetailPanel({
                             steps[i] = { ...steps[i], text: v };
                             update({ steps });
                           }}
-                          placeholder="Task description"
+                          placeholder="Step description"
                           style={{ fontSize: 13, color: "#3B4953" }}
                         />
                         <InlineInput
@@ -361,6 +439,16 @@ export function DetailPanel({
                           placeholder="Add a note…"
                           style={{ ...dmSerif, fontSize: 11, color: "#547863", marginTop: 4 }}
                         />
+                        <InlineInput
+                          value={t.owner ?? ""}
+                          onChange={(v) => {
+                            const steps = [...workflow.steps];
+                            steps[i] = { ...steps[i], owner: v || undefined };
+                            update({ steps });
+                          }}
+                          placeholder="Owner…"
+                          style={{ fontSize: 11, color: "#90AB8B", marginTop: 2 }}
+                        />
                       </div>
                       <button
                         onClick={() => {
@@ -371,7 +459,7 @@ export function DetailPanel({
                         }}
                         className="opacity-0 group-hover:opacity-100 hover:bg-[#EBF4DD] rounded p-0.5"
                         style={{ color: "#90AB8B", flexShrink: 0 }}
-                        aria-label="Remove task"
+                        aria-label="Remove step"
                       >
                         <X size={12} />
                       </button>

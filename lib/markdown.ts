@@ -1,28 +1,37 @@
-import type { Workflow } from "./workflows";
+import type { Workflow, Trigger } from "./workflows";
+
+function formatTrigger(trigger: Trigger | null): string {
+  if (!trigger) return "Not yet defined";
+  if (trigger.type === "chained") return "Triggered by an upstream workflow";
+  const label = trigger.type.charAt(0).toUpperCase() + trigger.type.slice(1);
+  return trigger.description ? `${label} — ${trigger.description}` : label;
+}
 
 export function workflowToMarkdown(w: Workflow): string {
   const inputs = w.inputs.map((i) => `- **${i.name}** _(${i.source})_`).join("\n");
   const outputs = w.outputs.map((o) => `- **${o.name}** _(${o.source})_`).join("\n");
-  const tasks = w.steps
-    .map((t) => `${t.n}. ${t.text}${t.note ? `\n   > _${t.note}_` : ""}`)
+  const steps = w.steps
+    .map((t) => {
+      let line = `${t.n}. ${t.text}`;
+      if (t.note) line += `\n   > _${t.note}_`;
+      if (t.owner) line += `\n   > Owner: ${t.owner}`;
+      return line;
+    })
     .join("\n");
   const tools = w.tools.map((t) => `\`${t}\``).join(" · ");
 
   return `# ${w.name}
 
-**Theme:** ${w.theme}  •  **Owner:** ${w.owner}  •  **Frequency:** ${w.frequency}
+**Theme:** ${w.theme}  •  **Trigger:** ${formatTrigger(w.trigger)}
 
-## Why
+## Purpose
 ${w.why}
-
-## When
-${w.when}
 
 ## Inputs
 ${inputs}
 
 ## Steps
-${tasks}
+${steps}
 
 ## Outputs
 ${outputs}
@@ -40,13 +49,14 @@ ${tools}
 \`\`\`
 You are setting up an automated routine for the workflow "${w.name}".
 
-Trigger: ${w.when}
-Owner of the routine: ${w.owner}
+Trigger: ${formatTrigger(w.trigger)}
 Inputs:
 ${w.inputs.map((i) => `  - ${i.name} (from ${i.source})`).join("\n")}
 
 Steps:
-${w.steps.map((t) => `  ${t.n}. ${t.text}${t.note ? ` — ${t.note}` : ""}`).join("\n")}
+${w.steps
+  .map((t) => `  ${t.n}. ${t.text}${t.note ? ` — ${t.note}` : ""}${t.owner ? ` (owner: ${t.owner})` : ""}`)
+  .join("\n")}
 
 Outputs:
 ${w.outputs.map((o) => `  - ${o.name} (to ${o.source})`).join("\n")}

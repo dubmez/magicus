@@ -1,16 +1,20 @@
 export type Theme = "sales" | "marketing" | "operations" | "finance";
 
 export type IOItem = { name: string; source: string };
-export type Step = { n: number; text: string; note?: string };
+
+export type Step = { n: number; text: string; note?: string; owner?: string };
+
+export type Trigger = {
+  type: "schedule" | "event" | "manual" | "chained";
+  description?: string;
+};
 
 export type Workflow = {
   id: string;
   theme: Theme;
   name: string;
-  owner: string;
-  frequency: string;
+  trigger: Trigger | null;
   why: string;
-  when: string;
   inputs: IOItem[];
   steps: Step[];
   outputs: IOItem[];
@@ -28,7 +32,7 @@ export type Canvas = {
   name: string;
   workflowIds: string[];
   connections: Connection[];
-  chainNames: Record<string, string>; // chainKey → user-overridden name
+  chainNames: Record<string, string>;
 };
 
 // ─── Chain utilities ──────────────────────────────────────────────────────────
@@ -66,7 +70,8 @@ export function chainKey(ids: string[]): string {
   return [...ids].sort().join("|");
 }
 
-const PHASE_WORDS = /\s+(qualif\w+|process\w+|review\w+|approv\w+|screen\w+|handl\w+|manag\w+|track\w+|call|send|publish\w*|pipeline|workflow|flow)$/i;
+const PHASE_WORDS =
+  /\s+(qualif\w+|process\w+|review\w+|approv\w+|screen\w+|handl\w+|manag\w+|track\w+|call|send|publish\w*|pipeline|workflow|flow)$/i;
 const CHAIN_SUFFIXES: Record<Theme, string> = {
   sales: "conversion",
   marketing: "campaign",
@@ -98,18 +103,16 @@ export const initialWorkflows: Workflow[] = [
     id: "qual",
     theme: "sales",
     name: "Inbound lead qualification",
-    owner: "Sales lead",
-    frequency: "Per event",
+    trigger: { type: "event", description: "New lead form submitted on the website" },
     why: "Surface high-fit leads quickly so reps spend time on the right accounts.",
-    when: "Triggered whenever a new lead form is submitted on the website.",
     inputs: [
       { name: "Lead form data", source: "Website" },
       { name: "ICP criteria", source: "Notion" },
     ],
     steps: [
       { n: 1, text: "Receive inbound lead" },
-      { n: 2, text: "Score against ICP", note: "If score > 7, proceed" },
-      { n: 3, text: "Send personalised outreach" },
+      { n: 2, text: "Score against ICP", note: "If score > 7, proceed", owner: "Rev Ops" },
+      { n: 3, text: "Send personalised outreach", owner: "Sales lead" },
       { n: 4, text: "Log to CRM" },
     ],
     outputs: [
@@ -126,17 +129,15 @@ export const initialWorkflows: Workflow[] = [
     id: "discovery",
     theme: "sales",
     name: "Discovery & needs call",
-    owner: "AE",
-    frequency: "Per lead",
+    trigger: { type: "chained" },
     why: "Understand the prospect's pain before pitching to avoid wasted cycles.",
-    when: "After a lead is marked qualified.",
     inputs: [
       { name: "Qualified lead", source: "HubSpot" },
       { name: "Discovery script", source: "Notion" },
     ],
     steps: [
       { n: 1, text: "Schedule call" },
-      { n: 2, text: "Run discovery", note: "If budget confirmed, advance" },
+      { n: 2, text: "Run discovery", note: "If budget confirmed, advance", owner: "AE" },
       { n: 3, text: "Capture pain points" },
       { n: 4, text: "Update opportunity" },
     ],
@@ -154,17 +155,15 @@ export const initialWorkflows: Workflow[] = [
     id: "proposal",
     theme: "sales",
     name: "Proposal & pricing",
-    owner: "Solutions",
-    frequency: "Per opportunity",
+    trigger: { type: "chained" },
     why: "Send tailored proposals fast while keeping margin within guardrails.",
-    when: "After a discovery call confirms fit and budget.",
     inputs: [
       { name: "Discovery notes", source: "HubSpot" },
       { name: "Pricing matrix", source: "Sheets" },
     ],
     steps: [
       { n: 1, text: "Draft proposal" },
-      { n: 2, text: "Internal review", note: "If discount > 15%, escalate" },
+      { n: 2, text: "Internal review", note: "If discount > 15%, escalate", owner: "Solutions" },
       { n: 3, text: "Send to prospect" },
       { n: 4, text: "Track open + reply" },
     ],
@@ -182,10 +181,8 @@ export const initialWorkflows: Workflow[] = [
     id: "close",
     theme: "sales",
     name: "Close & handoff",
-    owner: "AE + CSM",
-    frequency: "Per win",
+    trigger: { type: "chained" },
     why: "Move customers from sales to success without dropped context.",
-    when: "When a proposal is signed.",
     inputs: [
       { name: "Signed proposal", source: "DocuSign" },
       { name: "Onboarding template", source: "Notion" },
@@ -193,7 +190,7 @@ export const initialWorkflows: Workflow[] = [
     steps: [
       { n: 1, text: "Mark deal closed-won" },
       { n: 2, text: "Trigger invoice", note: "If annual, send PO request" },
-      { n: 3, text: "Kick off onboarding" },
+      { n: 3, text: "Kick off onboarding", owner: "CSM" },
       { n: 4, text: "Schedule QBR" },
     ],
     outputs: [
@@ -210,16 +207,14 @@ export const initialWorkflows: Workflow[] = [
     id: "newsletter",
     theme: "marketing",
     name: "Weekly newsletter send",
-    owner: "Content lead",
-    frequency: "Weekly",
+    trigger: { type: "schedule", description: "Every Thursday at 9am local" },
     why: "Keep audience engaged with consistent value-led touchpoints.",
-    when: "Every Thursday at 9am local.",
     inputs: [
       { name: "Editorial calendar", source: "Notion" },
       { name: "Subscriber list", source: "Mailchimp" },
     ],
     steps: [
-      { n: 1, text: "Compile stories" },
+      { n: 1, text: "Compile stories", owner: "Content lead" },
       { n: 2, text: "Draft newsletter", note: "If long-form > 600 words, split" },
       { n: 3, text: "Schedule send" },
     ],
@@ -237,16 +232,14 @@ export const initialWorkflows: Workflow[] = [
     id: "content",
     theme: "marketing",
     name: "Content publishing pipeline",
-    owner: "Editor",
-    frequency: "Per piece",
+    trigger: { type: "event", description: "Draft moved to Ready-for-edit in Notion" },
     why: "Ship high-quality content without bottlenecks at review.",
-    when: "When a draft is moved to Ready-for-edit.",
     inputs: [
       { name: "Draft article", source: "Google Docs" },
       { name: "Style guide", source: "Notion" },
     ],
     steps: [
-      { n: 1, text: "Editorial review" },
+      { n: 1, text: "Editorial review", owner: "Editor" },
       { n: 2, text: "Run SEO check", note: "If score < 80, revise" },
       { n: 3, text: "Publish to CMS" },
     ],
@@ -264,16 +257,14 @@ export const initialWorkflows: Workflow[] = [
     id: "vendor",
     theme: "operations",
     name: "Vendor onboarding",
-    owner: "Ops manager",
-    frequency: "Per vendor",
+    trigger: { type: "event", description: "New vendor request added in procurement" },
     why: "Get vendors set up cleanly so payments and access don't stall.",
-    when: "When a new vendor is added in procurement.",
     inputs: [
       { name: "Vendor request", source: "Airtable" },
       { name: "Compliance checklist", source: "Notion" },
     ],
     steps: [
-      { n: 1, text: "Verify documents" },
+      { n: 1, text: "Verify documents", owner: "Ops manager" },
       { n: 2, text: "Set up payment", note: "If foreign vendor, add tax form" },
       { n: 3, text: "Provision access" },
     ],
@@ -291,17 +282,15 @@ export const initialWorkflows: Workflow[] = [
     id: "invoice",
     theme: "finance",
     name: "Invoice approval",
-    owner: "Finance ops",
-    frequency: "Daily",
+    trigger: { type: "schedule", description: "Daily at 8am when invoices arrive in inbox" },
     why: "Pay vendors on time without rubber-stamping unauthorized spend.",
-    when: "When an invoice is uploaded to the inbox.",
     inputs: [
       { name: "Invoice PDF", source: "Email" },
       { name: "Approval matrix", source: "Sheets" },
     ],
     steps: [
       { n: 1, text: "Parse invoice fields" },
-      { n: 2, text: "Route for approval", note: "If > $5k, dual approval" },
+      { n: 2, text: "Route for approval", note: "If > $5k, dual approval", owner: "Finance ops" },
       { n: 3, text: "Schedule payment" },
     ],
     outputs: [

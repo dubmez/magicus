@@ -3,9 +3,12 @@
 import { useEffect, useRef, useState } from "react";
 import { Sparkles, Send, Loader2, X, ArrowRight } from "lucide-react";
 
-const dmSerif = { fontFamily: "var(--font-dm-serif), serif", fontStyle: "italic" as const };
+const dmSerif = {
+  fontFamily: "var(--font-dm-serif), serif",
+  fontStyle: "italic" as const,
+};
 
-type Stage = "idle" | "asking" | "generating";
+type Stage = "idle" | "generating";
 
 export function Landing({
   mode,
@@ -14,30 +17,24 @@ export function Landing({
   onSkip,
 }: {
   mode: "fullscreen" | "modal";
-  onMap: (description: string, clarification?: string) => void;
+  onMap: (description: string) => void;
   onCancel?: () => void;
   onSkip?: () => void;
 }) {
   const [stage, setStage] = useState<Stage>("idle");
   const [text, setText] = useState("");
-  const [clarification, setClarification] = useState("");
   const taRef = useRef<HTMLTextAreaElement>(null);
 
-  useEffect(() => { taRef.current?.focus(); }, []);
+  useEffect(() => {
+    taRef.current?.focus();
+  }, []);
 
   const submit = () => {
-    if (stage === "idle") {
-      if (text.trim().length === 0) return;
-      setStage("asking");
-    } else if (stage === "asking") {
-      setStage("generating");
-      setTimeout(() => { onMap(text, clarification); }, 1100);
-    }
-  };
-
-  const skipClarification = () => {
+    if (stage !== "idle" || text.trim().length === 0) return;
     setStage("generating");
-    setTimeout(() => { onMap(text); }, 900);
+    setTimeout(() => {
+      onMap(text);
+    }, 900);
   };
 
   const content = (
@@ -66,7 +63,12 @@ export function Landing({
 
       <div
         className="flex items-center gap-2"
-        style={{ marginBottom: 14, color: "#547863", fontSize: 12, letterSpacing: 0.6 }}
+        style={{
+          marginBottom: 14,
+          color: "#547863",
+          fontSize: 12,
+          letterSpacing: 0.6,
+        }}
       >
         <Sparkles size={14} />
         <span style={{ textTransform: "uppercase", fontWeight: 500 }}>
@@ -84,110 +86,54 @@ export function Landing({
           letterSpacing: -0.5,
         }}
       >
-        {stage === "asking"
-          ? "One quick clarification"
-          : "Describe a workflow and I'll map it."}
+        Describe a workflow and I'll map it.
       </h1>
-      <p style={{ fontSize: 15, color: "#547863", lineHeight: 1.5, marginBottom: 24 }}>
-        {stage === "asking"
-          ? "Who owns this workflow, and what tools does it touch? Skip if you'd rather I guess."
-          : "Tell me what happens, who's involved, and the tools you use. Magicus turns it into a butterfly card you can refine, chain, and export."}
+      <p
+        style={{
+          fontSize: 15,
+          color: "#547863",
+          lineHeight: 1.5,
+          marginBottom: 24,
+        }}
+      >
+        Tell me what happens, who's involved, and the tools you use. Magicus
+        maps your workflow so you can refine, chain, and automate.
       </p>
 
-      {stage === "asking" ? (
-        <>
-          <div
-            style={{
-              background: "#F7FAF2",
-              border: "1px solid #EBF4DD",
-              borderRadius: 12,
-              padding: 14,
-              marginBottom: 12,
-              fontSize: 13,
-              color: "#3B4953",
-              lineHeight: 1.45,
-            }}
-          >
-            <div
-              style={{
-                fontSize: 11,
-                color: "#547863",
-                letterSpacing: 0.6,
-                textTransform: "uppercase",
-                marginBottom: 6,
-              }}
-            >
-              Your description
-            </div>
-            {text}
-          </div>
-          <input
-            value={clarification}
-            onChange={(e) => setClarification(e.target.value)}
-            placeholder="e.g. Owned by Ops; uses Notion + Slack"
-            autoFocus
-            onKeyDown={(e) => { if (e.key === "Enter") submit(); }}
-            style={{
-              width: "100%",
-              background: "#F7FAF2",
-              border: "1px solid #EBF4DD",
-              borderRadius: 12,
-              padding: "12px 14px",
-              fontSize: 14,
-              color: "#3B4953",
-              outline: "none",
-              fontFamily: "inherit",
-            }}
-          />
-        </>
-      ) : (
-        <textarea
-          ref={taRef}
-          value={text}
-          onChange={(e) => setText(e.target.value)}
-          disabled={stage !== "idle"}
-          placeholder="When a customer requests a refund, our support team checks eligibility, processes it in Stripe, and emails the customer..."
-          rows={5}
-          onKeyDown={(e) => { if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) submit(); }}
-          style={{
-            width: "100%",
-            background: "#F7FAF2",
-            border: "1px solid #EBF4DD",
-            borderRadius: 12,
-            padding: "14px 16px",
-            fontSize: 14,
-            color: "#3B4953",
-            outline: "none",
-            resize: "none",
-            fontFamily: "inherit",
-            lineHeight: 1.5,
-          }}
-        />
-      )}
+      <textarea
+        ref={taRef}
+        value={text}
+        onChange={(e) => setText(e.target.value)}
+        disabled={stage !== "idle"}
+        placeholder="When a customer requests a refund, our support team checks eligibility, processes it in Stripe, and emails the customer..."
+        rows={5}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) submit();
+        }}
+        style={{
+          width: "100%",
+          background: "#F7FAF2",
+          border: "1px solid #EBF4DD",
+          borderRadius: 12,
+          padding: "14px 16px",
+          fontSize: 14,
+          color: "#3B4953",
+          outline: "none",
+          resize: "none",
+          fontFamily: "inherit",
+          lineHeight: 1.5,
+        }}
+      />
 
-      <div className="flex items-center justify-between" style={{ marginTop: 18 }}>
+      <div
+        className="flex items-center justify-between"
+        style={{ marginTop: 18 }}
+      >
         <div style={{ fontSize: 12, color: "#90AB8B" }}>
           {stage === "idle" && "Tip: ⌘ + Enter to map"}
-          {stage === "asking" && "Hit Enter to map · or skip"}
           {stage === "generating" && "Mapping into a butterfly…"}
         </div>
         <div className="flex items-center gap-2">
-          {stage === "asking" && (
-            <button
-              onClick={skipClarification}
-              className="hover:bg-[#EBF4DD] transition-colors"
-              style={{
-                background: "transparent",
-                color: "#547863",
-                padding: "10px 16px",
-                borderRadius: 999,
-                fontSize: 13,
-                border: "1px solid #EBF4DD",
-              }}
-            >
-              Skip
-            </button>
-          )}
           {mode === "fullscreen" && stage === "idle" && onSkip && (
             <button
               onClick={onSkip}
@@ -200,7 +146,7 @@ export function Landing({
           )}
           <button
             onClick={submit}
-            disabled={stage === "generating" || (stage === "idle" && text.trim().length === 0)}
+            disabled={stage === "generating" || text.trim().length === 0}
             className="flex items-center gap-2 transition-opacity hover:opacity-90"
             style={{
               background: "#3B4953",
@@ -210,9 +156,9 @@ export function Landing({
               fontSize: 13,
               fontWeight: 500,
               opacity:
-                stage === "generating" || (stage === "idle" && text.trim().length === 0) ? 0.5 : 1,
+                stage === "generating" || text.trim().length === 0 ? 0.5 : 1,
               cursor:
-                stage === "generating" || (stage === "idle" && text.trim().length === 0)
+                stage === "generating" || text.trim().length === 0
                   ? "not-allowed"
                   : "pointer",
             }}
@@ -240,12 +186,16 @@ export function Landing({
         className="fixed inset-0 flex items-center justify-center p-6"
         style={{
           background: "#F7FAF2",
-          backgroundImage: "radial-gradient(rgba(144, 171, 139, 0.4) 1.2px, transparent 1.2px)",
+          backgroundImage:
+            "radial-gradient(rgba(144, 171, 139, 0.4) 1.2px, transparent 1.2px)",
           backgroundSize: "28px 28px",
           zIndex: 50,
         }}
       >
-        <div className="absolute flex items-center gap-3" style={{ top: 28, left: 32 }}>
+        <div
+          className="absolute flex items-center gap-3"
+          style={{ top: 28, left: 32 }}
+        >
           <div
             style={{
               width: 28,
@@ -262,7 +212,9 @@ export function Landing({
           >
             m
           </div>
-          <div style={{ ...dmSerif, fontSize: 22, color: "#3B4953" }}>magicus</div>
+          <div style={{ ...dmSerif, fontSize: 22, color: "#3B4953" }}>
+            magicus
+          </div>
         </div>
         {content}
       </div>

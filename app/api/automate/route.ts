@@ -26,13 +26,17 @@ export async function POST(req: NextRequest) {
           .filter((c) => c.from === w.id)
           .map((c) => workflows.find((x) => x.id === c.to)?.name)
           .filter(Boolean);
+        const triggerLabel = w.trigger
+          ? w.trigger.type === "chained"
+            ? "Triggered by upstream workflow"
+            : `${w.trigger.type}${w.trigger.description ? ` — ${w.trigger.description}` : ""}`
+          : "Not yet defined";
         return [
           `## ${w.name}`,
-          `Owner: ${w.owner} | Trigger: ${w.frequency} | Theme: ${w.theme}`,
-          `Why: ${w.why}`,
-          `When: ${w.when}`,
+          `Theme: ${w.theme} | Trigger: ${triggerLabel}`,
+          `Purpose: ${w.why}`,
           `Inputs: ${w.inputs.map((i) => `${i.name} (${i.source})`).join(", ")}`,
-          `Tasks: ${w.steps.map((t) => `${t.n}. ${t.text}${t.note ? ` [${t.note}]` : ""}`).join(" → ")}`,
+          `Steps: ${w.steps.map((t) => `${t.n}. ${t.text}${t.note ? ` [${t.note}]` : ""}${t.owner ? ` (${t.owner})` : ""}`).join(" → ")}`,
           `Outputs: ${w.outputs.map((o) => `${o.name} (${o.source})`).join(", ")}`,
           `Tools: ${w.tools.join(", ")}`,
           `Automation score: ${w.automationScore}%`,

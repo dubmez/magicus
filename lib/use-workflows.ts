@@ -19,12 +19,17 @@ function readLocal<T>(key: string, fallback: T): T {
 
 function migrateWorkflows(wfs: Workflow[]): Workflow[] {
   return wfs.map((w) => {
-    const legacy = w as Workflow & { tasks?: unknown };
-    if (legacy.tasks && !w.steps) {
-      const { tasks, ...rest } = legacy;
-      return { ...rest, steps: tasks } as Workflow;
-    }
-    return w;
+    const leg = w as Record<string, unknown>;
+    const out: Record<string, unknown> = { ...leg };
+    // tasks → steps
+    if (leg.tasks && !leg.steps) { out.steps = leg.tasks; delete out.tasks; }
+    // strip removed fields
+    delete out.owner;
+    delete out.frequency;
+    delete out.when;
+    // add trigger if missing
+    if (!("trigger" in out)) out.trigger = null;
+    return out as Workflow;
   });
 }
 

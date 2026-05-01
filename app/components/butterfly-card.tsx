@@ -7,8 +7,6 @@ type IOItem = { name: string; source: string };
 
 export type ButterflyData = {
   name: string;
-  owner: string;
-  frequency: string;
   inputs: IOItem[];
   steps: Step[];
   outputs: IOItem[];
@@ -46,6 +44,7 @@ export function ButterflyCard({
   hovered = false,
   compact = false,
   shared = false,
+  incomplete = false,
   maxSteps,
   onClick,
   onMouseEnter,
@@ -57,6 +56,7 @@ export function ButterflyCard({
   hovered?: boolean;
   compact?: boolean;
   shared?: boolean;
+  incomplete?: boolean;
   maxSteps?: number;
   onClick?: (e: React.MouseEvent) => void;
   onMouseEnter?: () => void;
@@ -108,6 +108,23 @@ export function ButterflyCard({
         </div>
       )}
 
+      {incomplete && !showAutomatable && (
+        <div
+          className="absolute z-20"
+          style={{
+            top: -4,
+            right: -4,
+            width: 12,
+            height: 12,
+            borderRadius: 999,
+            background: "#F59E0B",
+            border: "2px solid #FFFFFF",
+            boxShadow: "0 1px 4px rgba(59,73,83,0.2)",
+          }}
+          title="Trigger not yet defined"
+        />
+      )}
+
       {showAutomatable && (
         <div
           className="absolute z-20 flex items-center gap-1"
@@ -144,9 +161,10 @@ export function ButterflyCard({
           <div style={{ ...dmSerif, color: "#FFFFFF", fontSize: compact ? 12 : 16, lineHeight: 1.2 }}>
             {data.name}
           </div>
-          {!compact && (
-            <div className="flex gap-1.5 justify-center mt-2 flex-wrap">
+          {!compact && shared && (
+            <div className="flex justify-center mt-2">
               <span
+                className="flex items-center gap-1"
                 style={{
                   background: "rgba(235, 244, 221, 0.12)",
                   color: "#90AB8B",
@@ -155,39 +173,9 @@ export function ButterflyCard({
                   borderRadius: 999,
                 }}
               >
-                Owner · {data.owner}
+                <Link2 size={8} />
+                shared
               </span>
-              <span
-                style={{
-                  background: "rgba(235, 244, 221, 0.12)",
-                  color: "#90AB8B",
-                  fontSize: 10,
-                  padding: "2px 8px",
-                  borderRadius: 999,
-                }}
-              >
-                {data.frequency}
-              </span>
-              {shared && (
-                <span
-                  className="flex items-center gap-1"
-                  style={{
-                    background: "rgba(235, 244, 221, 0.12)",
-                    color: "#90AB8B",
-                    fontSize: 10,
-                    padding: "2px 8px",
-                    borderRadius: 999,
-                  }}
-                >
-                  <Link2 size={8} />
-                  shared
-                </span>
-              )}
-            </div>
-          )}
-          {compact && (
-            <div style={{ color: "#90AB8B", fontSize: 9, marginTop: 3 }}>
-              {data.owner} · {data.frequency}
             </div>
           )}
         </div>
@@ -280,9 +268,16 @@ export function ButterflyCard({
                   >
                     {t.n}
                   </span>
-                  <span style={{ fontSize: compact ? 9 : 11, color: "#3B4953", lineHeight: 1.35 }}>
-                    {t.text}
-                  </span>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <span style={{ fontSize: compact ? 9 : 11, color: "#3B4953", lineHeight: 1.35 }}>
+                      {t.text}
+                    </span>
+                    {t.owner && !compact && (
+                      <div style={{ fontSize: 9, color: "#90AB8B", marginTop: 2, lineHeight: 1.3 }}>
+                        {t.owner}
+                      </div>
+                    )}
+                  </div>
                 </div>
                 {t.note && !compact && (
                   <div

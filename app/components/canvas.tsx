@@ -454,6 +454,7 @@ export function Canvas({
                 selected={selectedId === w.id}
                 multiSelected={selectedIds.has(w.id)}
                 shared={sharedWorkflowIds?.has(w.id) ?? false}
+                incomplete={!w.trigger}
                 onMouseEnter={() => setHovered(w.id)}
                 onMouseLeave={() => setHovered(null)}
                 onClick={(e) => {

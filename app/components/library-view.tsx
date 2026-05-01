@@ -2,11 +2,17 @@
 
 import { useState } from "react";
 import { Zap, ArrowUpDown, Trash2 } from "lucide-react";
-import type { Workflow } from "@/lib/workflows";
+import type { Workflow, Trigger } from "@/lib/workflows";
 import { THEME_META } from "@/lib/workflows";
 
 
-type SortKey = "name" | "theme" | "owner" | "frequency" | "automation";
+type SortKey = "name" | "theme" | "trigger" | "automation";
+
+function triggerLabel(trigger: Trigger | null): string {
+  if (!trigger) return "Not set";
+  if (trigger.type === "chained") return "Chained";
+  return trigger.type.charAt(0).toUpperCase() + trigger.type.slice(1);
+}
 
 export function LibraryView({
   workflows,
@@ -20,14 +26,11 @@ export function LibraryView({
   const [sortKey, setSortKey] = useState<SortKey>("theme");
   const [asc, setAsc] = useState(true);
 
-  const filtered = workflows;
-
-  const sorted = [...filtered].sort((a, b) => {
+  const sorted = [...workflows].sort((a, b) => {
     let cmp = 0;
     if (sortKey === "name") cmp = a.name.localeCompare(b.name);
     else if (sortKey === "theme") cmp = a.theme.localeCompare(b.theme);
-    else if (sortKey === "owner") cmp = a.owner.localeCompare(b.owner);
-    else if (sortKey === "frequency") cmp = a.frequency.localeCompare(b.frequency);
+    else if (sortKey === "trigger") cmp = triggerLabel(a.trigger).localeCompare(triggerLabel(b.trigger));
     else if (sortKey === "automation") cmp = a.automationScore - b.automationScore;
     return asc ? cmp : -cmp;
   });
@@ -69,7 +72,7 @@ export function LibraryView({
           <div
             style={{
               display: "grid",
-              gridTemplateColumns: "minmax(220px, 2fr) 130px 150px 140px minmax(160px, 1.2fr) 180px 44px",
+              gridTemplateColumns: "minmax(220px, 2fr) 130px 160px minmax(160px, 1.2fr) 180px 44px",
               gap: 12,
               padding: "14px 20px",
               fontSize: 11,
@@ -83,8 +86,7 @@ export function LibraryView({
           >
             <HeaderCell label="Workflow" sortKey="name" current={sortKey} asc={asc} onClick={setSort} />
             <HeaderCell label="Theme" sortKey="theme" current={sortKey} asc={asc} onClick={setSort} />
-            <HeaderCell label="Owner" sortKey="owner" current={sortKey} asc={asc} onClick={setSort} />
-            <HeaderCell label="Trigger" sortKey="frequency" current={sortKey} asc={asc} onClick={setSort} />
+            <HeaderCell label="Trigger" sortKey="trigger" current={sortKey} asc={asc} onClick={setSort} />
             <div>Tools</div>
             <HeaderCell label="Automation" sortKey="automation" current={sortKey} asc={asc} onClick={setSort} />
             <div />
@@ -105,6 +107,7 @@ export function LibraryView({
 
           {sorted.map((w) => {
             const automatable = w.automationScore >= 70;
+            const incomplete = !w.trigger;
             return (
               <div
                 key={w.id}
@@ -112,7 +115,7 @@ export function LibraryView({
                 className="cursor-pointer transition-colors hover:bg-[#FBFDF7]"
                 style={{
                   display: "grid",
-                  gridTemplateColumns: "minmax(220px, 2fr) 130px 150px 140px minmax(160px, 1.2fr) 180px 44px",
+                  gridTemplateColumns: "minmax(220px, 2fr) 130px 160px minmax(160px, 1.2fr) 180px 44px",
                   gap: 12,
                   padding: "14px 20px",
                   borderBottom: "1px solid #EBF4DD",
@@ -144,7 +147,7 @@ export function LibraryView({
                       {w.name}
                     </div>
                     <div style={{ fontSize: 11, color: "#90AB8B", marginTop: 1 }}>
-                      {w.steps.length} task{w.steps.length === 1 ? "" : "s"} · {w.inputs.length} in / {w.outputs.length} out
+                      {w.steps.length} step{w.steps.length === 1 ? "" : "s"} · {w.inputs.length} in / {w.outputs.length} out
                     </div>
                   </div>
                   {automatable && (
@@ -169,8 +172,32 @@ export function LibraryView({
                 <div style={{ fontSize: 12, color: "#547863", textTransform: "capitalize" }}>
                   {THEME_META[w.theme].label}
                 </div>
-                <div style={{ fontSize: 12, color: "#3B4953" }}>{w.owner}</div>
-                <div style={{ fontSize: 12, color: "#3B4953" }}>{w.frequency}</div>
+                <div className="flex items-center gap-2" style={{ minWidth: 0 }}>
+                  {incomplete && (
+                    <span
+                      style={{
+                        width: 7,
+                        height: 7,
+                        borderRadius: 999,
+                        background: "#F59E0B",
+                        flexShrink: 0,
+                      }}
+                      title="Trigger not yet defined"
+                    />
+                  )}
+                  <span
+                    style={{
+                      fontSize: 12,
+                      color: incomplete ? "#90AB8B" : "#3B4953",
+                      fontStyle: incomplete ? "italic" : "normal",
+                      whiteSpace: "nowrap",
+                      overflow: "hidden",
+                      textOverflow: "ellipsis",
+                    }}
+                  >
+                    {triggerLabel(w.trigger)}
+                  </span>
+                </div>
 
                 <div className="flex flex-wrap gap-1" style={{ minWidth: 0 }}>
                   {w.tools.slice(0, 3).map((t) => (

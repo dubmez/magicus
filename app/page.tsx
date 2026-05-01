@@ -21,29 +21,25 @@ function inferTheme(text: string): Theme {
   return "sales";
 }
 
-function generateWorkflow(id: string, description: string, clarification?: string): Workflow {
-  const theme = inferTheme(description + " " + (clarification ?? ""));
+function generateWorkflow(id: string, description: string): Workflow {
+  const theme = inferTheme(description);
   const firstSentence = description.split(/[.!?]/)[0].trim();
   const name =
     firstSentence.length > 0 && firstSentence.length < 60
       ? firstSentence.replace(/^./, (c) => c.toUpperCase())
       : "New workflow";
 
-  const ownerMatch = clarification?.match(/own(?:ed|er)[^,]*by\s+([A-Za-z ]+)/i);
-  const toolMatch = clarification?.match(/(?:use[s]?|with|via|tools?)[\s:]+([A-Za-z0-9, +&]+)/i);
+  const toolMatch = description.match(/(?:use[s]?|with|via|tools?)[\s:]+([A-Za-z0-9, +&]+)/i);
   const tools = toolMatch
     ? toolMatch[1].split(/[,+&]/).map((t) => t.trim()).filter(Boolean).slice(0, 4)
     : ["Notion", "Slack"];
-  const owner = ownerMatch ? ownerMatch[1].trim() : "Unassigned";
 
   return {
     id,
     theme,
     name,
-    owner,
-    frequency: "Per event",
+    trigger: null,
     why: description.trim() || "Recently captured workflow — review and refine the details.",
-    when: "Triggered manually for now. Define an automatic trigger when ready.",
     inputs: [
       { name: "Trigger event", source: "Manual" },
       { name: "Reference docs", source: "Notion" },
@@ -107,6 +103,14 @@ export default function Home() {
     () => workflows.find((w) => w.id === selectedId) ?? null,
     [workflows, selectedId]
   );
+
+  const incomingWorkflows = useMemo(() => {
+    if (!selectedId || !activeCanvas) return [];
+    return activeCanvas.connections
+      .filter((c) => c.to === selectedId)
+      .map((c) => workflows.find((w) => w.id === c.from))
+      .filter(Boolean) as Workflow[];
+  }, [selectedId, activeCanvas, workflows]);
 
   // ── Canvas helpers ────────────────────────────────────────────────────────
 
@@ -181,9 +185,9 @@ export default function Home() {
     setFocusId(id + ":" + Date.now());
   };
 
-  const handleMap = (description: string, clarification?: string) => {
+  const handleMap = (description: string) => {
     const id = `wf-${Date.now()}`;
-    const newWf = generateWorkflow(id, description, clarification);
+    const newWf = generateWorkflow(id, description);
     const maxX = activeWorkflows.length > 0
       ? Math.max(...activeWorkflows.map((w) => w.x))
       : 0;
@@ -240,17 +244,28 @@ export default function Home() {
         ],
       });
     }
+    // Auto-set the target's trigger to chained
+    setWorkflows((prev) =>
+      prev.map((w) => (w.id === toId ? { ...w, trigger: { type: "chained" } } : w))
+    );
     setConnectMode(null);
     setSelectedId(toId);
     setSelectedIds(new Set());
   };
 
   const handleDeleteConnection = (fromId: string, toId: string) => {
-    updateActiveCanvas({
-      connections: activeCanvas.connections.filter(
-        (c) => !(c.from === fromId && c.to === toId)
-      ),
-    });
+    if (!activeCanvas) return;
+    const newConns = activeCanvas.connections.filter(
+      (c) => !(c.from === fromId && c.to === toId)
+    );
+    updateActiveCanvas({ connections: newConns });
+    // If the target no longer has any incoming connection, clear its trigger
+    const stillHasIncoming = newConns.some((c) => c.to === toId);
+    if (!stillHasIncoming) {
+      setWorkflows((prev) =>
+        prev.map((w) => (w.id === toId ? { ...w, trigger: null } : w))
+      );
+    }
   };
 
   const handleUpdateChainName = (key: string, name: string) => {
@@ -360,6 +375,7 @@ export default function Home() {
 
           <DetailPanel
             workflow={selected}
+            incomingWorkflows={incomingWorkflows}
             onClose={() => setSelectedId(null)}
             onExport={(id) => setExportTarget({ id })}
             onChain={handleStartChain}
