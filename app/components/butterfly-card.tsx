@@ -1,16 +1,16 @@
 "use client";
 
-import { Zap } from "lucide-react";
+import { Zap, Link2 } from "lucide-react";
+import type { Step } from "@/lib/workflows";
 
 type IOItem = { name: string; source: string };
-type Task = { n: number; text: string; note?: string };
 
 export type ButterflyData = {
   name: string;
   owner: string;
   frequency: string;
   inputs: IOItem[];
-  tasks: Task[];
+  steps: Step[];
   outputs: IOItem[];
   tools: string[];
   automationScore?: number;
@@ -45,7 +45,8 @@ export function ButterflyCard({
   multiSelected = false,
   hovered = false,
   compact = false,
-  maxTasks,
+  shared = false,
+  maxSteps,
   onClick,
   onMouseEnter,
   onMouseLeave,
@@ -55,7 +56,8 @@ export function ButterflyCard({
   multiSelected?: boolean;
   hovered?: boolean;
   compact?: boolean;
-  maxTasks?: number;
+  shared?: boolean;
+  maxSteps?: number;
   onClick?: (e: React.MouseEvent) => void;
   onMouseEnter?: () => void;
   onMouseLeave?: () => void;
@@ -67,7 +69,7 @@ export function ButterflyCard({
     : "drop-shadow(0px 4px 24px rgba(59, 73, 83, 0.12))";
 
   const showAutomatable = (data.automationScore ?? 0) >= 70;
-  const tasks = maxTasks ? data.tasks.slice(0, maxTasks) : data.tasks;
+  const steps = maxSteps ? data.steps.slice(0, maxSteps) : data.steps;
 
   return (
     <div
@@ -143,7 +145,7 @@ export function ButterflyCard({
             {data.name}
           </div>
           {!compact && (
-            <div className="flex gap-1.5 justify-center mt-2">
+            <div className="flex gap-1.5 justify-center mt-2 flex-wrap">
               <span
                 style={{
                   background: "rgba(235, 244, 221, 0.12)",
@@ -166,6 +168,21 @@ export function ButterflyCard({
               >
                 {data.frequency}
               </span>
+              {shared && (
+                <span
+                  className="flex items-center gap-1"
+                  style={{
+                    background: "rgba(235, 244, 221, 0.12)",
+                    color: "#90AB8B",
+                    fontSize: 10,
+                    padding: "2px 8px",
+                    borderRadius: 999,
+                  }}
+                >
+                  <Link2 size={8} />
+                  shared
+                </span>
+              )}
             </div>
           )}
           {compact && (
@@ -233,7 +250,7 @@ export function ButterflyCard({
             }}
           />
           <div className="relative flex flex-col gap-2" style={{ zIndex: 1 }}>
-            {tasks.map((t) => (
+            {steps.map((t) => (
               <div key={t.n}>
                 <div
                   style={{

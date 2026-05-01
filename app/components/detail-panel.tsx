@@ -313,9 +313,9 @@ export function DetailPanel({
             </Section>
 
             {/* Tasks */}
-            <Section label="Tasks">
+            <Section label="Steps">
               <ol className="flex flex-col gap-2" style={{ listStyle: "none", padding: 0 }}>
-                {workflow.tasks.map((t, i) => (
+                {workflow.steps.map((t, i) => (
                   <li
                     key={t.n}
                     className="group"
@@ -344,9 +344,9 @@ export function DetailPanel({
                         <InlineInput
                           value={t.text}
                           onChange={(v) => {
-                            const tasks = [...workflow.tasks];
-                            tasks[i] = { ...tasks[i], text: v };
-                            update({ tasks });
+                            const steps = [...workflow.steps];
+                            steps[i] = { ...steps[i], text: v };
+                            update({ steps });
                           }}
                           placeholder="Task description"
                           style={{ fontSize: 13, color: "#3B4953" }}
@@ -354,9 +354,9 @@ export function DetailPanel({
                         <InlineInput
                           value={t.note ?? ""}
                           onChange={(v) => {
-                            const tasks = [...workflow.tasks];
-                            tasks[i] = { ...tasks[i], note: v || undefined };
-                            update({ tasks });
+                            const steps = [...workflow.steps];
+                            steps[i] = { ...steps[i], note: v || undefined };
+                            update({ steps });
                           }}
                           placeholder="Add a note…"
                           style={{ ...dmSerif, fontSize: 11, color: "#547863", marginTop: 4 }}
@@ -364,10 +364,10 @@ export function DetailPanel({
                       </div>
                       <button
                         onClick={() => {
-                          const tasks = workflow.tasks
+                          const steps = workflow.steps
                             .filter((_, j) => j !== i)
                             .map((t, j) => ({ ...t, n: j + 1 }));
-                          update({ tasks });
+                          update({ steps });
                         }}
                         className="opacity-0 group-hover:opacity-100 hover:bg-[#EBF4DD] rounded p-0.5"
                         style={{ color: "#90AB8B", flexShrink: 0 }}
@@ -382,14 +382,14 @@ export function DetailPanel({
               <button
                 onClick={() => {
                   update({
-                    tasks: [...workflow.tasks, { n: workflow.tasks.length + 1, text: "" }],
+                    steps: [...workflow.steps, { n: workflow.steps.length + 1, text: "" }],
                   });
                 }}
                 className="flex items-center gap-1 hover:bg-[#EBF4DD] rounded-md transition-colors"
                 style={{ fontSize: 12, color: "#547863", marginTop: 8, padding: "4px 8px" }}
               >
                 <Plus size={12} />
-                Add task
+                Add step
               </button>
             </Section>
 

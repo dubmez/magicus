@@ -2,26 +2,25 @@
 
 import { useState } from "react";
 import { Zap, ArrowUpDown, Trash2 } from "lucide-react";
-import type { Theme, Workflow } from "@/lib/workflows";
+import type { Workflow } from "@/lib/workflows";
 import { THEME_META } from "@/lib/workflows";
+
 
 type SortKey = "name" | "theme" | "owner" | "frequency" | "automation";
 
 export function LibraryView({
   workflows,
-  themeFilter,
   onOpen,
   onDelete,
 }: {
   workflows: Workflow[];
-  themeFilter: Theme | null;
   onOpen: (id: string) => void;
   onDelete: (id: string) => void;
 }) {
   const [sortKey, setSortKey] = useState<SortKey>("theme");
   const [asc, setAsc] = useState(true);
 
-  const filtered = themeFilter ? workflows.filter((w) => w.theme === themeFilter) : workflows;
+  const filtered = workflows;
 
   const sorted = [...filtered].sort((a, b) => {
     let cmp = 0;
@@ -57,7 +56,6 @@ export function LibraryView({
         </div>
         <div style={{ fontSize: 13, color: "#547863", marginBottom: 24 }}>
           {sorted.length} workflow{sorted.length === 1 ? "" : "s"}
-          {themeFilter ? ` · filtered to ${THEME_META[themeFilter].label}` : ""}
         </div>
 
         <div
@@ -146,7 +144,7 @@ export function LibraryView({
                       {w.name}
                     </div>
                     <div style={{ fontSize: 11, color: "#90AB8B", marginTop: 1 }}>
-                      {w.tasks.length} task{w.tasks.length === 1 ? "" : "s"} · {w.inputs.length} in / {w.outputs.length} out
+                      {w.steps.length} task{w.steps.length === 1 ? "" : "s"} · {w.inputs.length} in / {w.outputs.length} out
                     </div>
                   </div>
                   {automatable && (

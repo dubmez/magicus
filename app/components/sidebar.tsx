@@ -1,34 +1,331 @@
 "use client";
 
-import { Zap } from "lucide-react";
-import type { Theme, Workflow } from "@/lib/workflows";
-import { THEME_META } from "@/lib/workflows";
+import { useState, useRef } from "react";
+import { Plus, ChevronRight, ChevronDown, Check, Zap, Link2 } from "lucide-react";
+import type { Canvas, Workflow } from "@/lib/workflows";
+import {
+  THEME_META,
+  computeChains,
+  chainKey,
+  inferChainName,
+} from "@/lib/workflows";
 
-export function Sidebar({
-  workflows,
-  selectedId,
-  themeFilter,
-  onSelect,
-  onThemeFilter,
+const dmSerif = { fontFamily: "var(--font-dm-serif), serif", fontStyle: "italic" as const };
+
+// ─── Canvas name (editable) ───────────────────────────────────────────────────
+
+function CanvasName({
+  name,
+  active,
+  onRename,
+  onClick,
 }: {
-  workflows: Workflow[];
-  selectedId: string | null;
-  themeFilter: Theme | null;
-  onSelect: (id: string) => void;
-  onThemeFilter: (t: Theme | null) => void;
+  name: string;
+  active: boolean;
+  onRename: (name: string) => void;
+  onClick: () => void;
 }) {
-  const themes: Theme[] = ["sales", "marketing", "operations", "finance"];
-  const visible = themeFilter ? workflows.filter((w) => w.theme === themeFilter) : workflows;
+  const [editing, setEditing] = useState(false);
+  const [val, setVal] = useState(name);
 
-  const themesToRender = themeFilter ? [themeFilter] : themes;
-  const grouped = themesToRender.map((t) => ({
-    theme: t,
-    items: visible.filter((w) => w.theme === t),
-  }));
+  const commit = () => {
+    setEditing(false);
+    const t = val.trim();
+    if (t && t !== name) onRename(t);
+    else setVal(name);
+  };
+
+  if (editing) {
+    return (
+      <input
+        autoFocus
+        value={val}
+        onChange={(e) => setVal(e.target.value)}
+        onBlur={commit}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") commit();
+          if (e.key === "Escape") { setEditing(false); setVal(name); }
+        }}
+        style={{
+          flex: 1,
+          background: "#F7FAF2",
+          border: "1px solid #547863",
+          borderRadius: 6,
+          padding: "3px 8px",
+          fontSize: 13,
+          fontWeight: 500,
+          color: "#3B4953",
+          outline: "none",
+          fontFamily: "var(--font-dm-sans), sans-serif",
+        }}
+      />
+    );
+  }
 
   return (
+    <button
+      onClick={onClick}
+      onDoubleClick={() => { setEditing(true); }}
+      className="flex-1 text-left truncate transition-colors"
+      style={{
+        ...dmSerif,
+        fontSize: 14,
+        color: active ? "#3B4953" : "#547863",
+        fontWeight: active ? 600 : 400,
+        background: "none",
+        border: "none",
+        padding: 0,
+        cursor: "pointer",
+      }}
+      title="Click to switch · Double-click to rename"
+    >
+      {name}
+    </button>
+  );
+}
+
+// ─── New canvas input ─────────────────────────────────────────────────────────
+
+function NewCanvasRow({ onCreate }: { onCreate: (name: string) => void }) {
+  const [open, setOpen] = useState(false);
+  const [val, setVal] = useState("");
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  const commit = () => {
+    const t = val.trim();
+    if (t) onCreate(t);
+    setVal("");
+    setOpen(false);
+  };
+
+  if (!open) {
+    return (
+      <button
+        onClick={() => { setOpen(true); setTimeout(() => inputRef.current?.focus(), 0); }}
+        className="flex items-center gap-2 w-full hover:bg-[#F7FAF2] transition-colors rounded-md"
+        style={{ padding: "8px 14px", fontSize: 12, color: "#90AB8B" }}
+      >
+        <Plus size={13} />
+        New canvas
+      </button>
+    );
+  }
+
+  return (
+    <div className="flex items-center gap-1.5" style={{ padding: "6px 10px" }}>
+      <input
+        ref={inputRef}
+        value={val}
+        onChange={(e) => setVal(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") commit();
+          if (e.key === "Escape") { setVal(""); setOpen(false); }
+        }}
+        placeholder="Canvas name…"
+        style={{
+          flex: 1,
+          background: "#F7FAF2",
+          border: "1px solid #EBF4DD",
+          borderRadius: 6,
+          padding: "4px 8px",
+          fontSize: 12,
+          color: "#3B4953",
+          outline: "none",
+          fontFamily: "var(--font-dm-sans), sans-serif",
+        }}
+      />
+      <button
+        onClick={commit}
+        disabled={val.trim().length === 0}
+        style={{ color: "#547863", display: "flex", opacity: val.trim().length === 0 ? 0.4 : 1 }}
+      >
+        <Check size={14} />
+      </button>
+    </div>
+  );
+}
+
+// ─── Chain section ────────────────────────────────────────────────────────────
+
+function ChainRow({
+  chainIds,
+  chainName,
+  workflows,
+  selectedId,
+  focusedChainKey: focusedKey,
+  sharedWorkflowIds,
+  onSelectWorkflow,
+  onFocusChain,
+}: {
+  chainIds: string[];
+  chainName: string;
+  workflows: Workflow[];
+  selectedId: string | null;
+  focusedChainKey: string | null;
+  sharedWorkflowIds: Set<string>;
+  onSelectWorkflow: (id: string) => void;
+  onFocusChain: (key: string | null) => void;
+}) {
+  const ckey = chainKey(chainIds);
+  const isHighlighted = focusedKey === ckey;
+  const [expanded, setExpanded] = useState(true);
+
+  // Sort chain members by x position (flow order)
+  const members = chainIds
+    .map((id) => workflows.find((w) => w.id === id))
+    .filter(Boolean) as Workflow[];
+  members.sort((a, b) => a.x - b.x);
+
+  return (
+    <div>
+      <button
+        onClick={() => {
+          setExpanded((e) => !e);
+          onFocusChain(isHighlighted ? null : ckey);
+        }}
+        className="w-full flex items-center gap-2 transition-colors hover:bg-[#F7FAF2] rounded-md"
+        style={{
+          padding: "6px 8px",
+          background: isHighlighted ? "rgba(84,120,99,0.08)" : "transparent",
+        }}
+      >
+        <div
+          style={{
+            width: 6,
+            height: 6,
+            borderRadius: 999,
+            background: "#90AB8B",
+            flexShrink: 0,
+          }}
+        />
+        <span
+          className="flex-1 text-left truncate"
+          style={{ fontSize: 12, color: "#3B4953", fontWeight: 500 }}
+        >
+          {chainName}
+        </span>
+        <span
+          style={{
+            fontSize: 10,
+            color: "#90AB8B",
+            background: "#F7FAF2",
+            border: "1px solid #EBF4DD",
+            borderRadius: 999,
+            padding: "1px 6px",
+            fontWeight: 500,
+          }}
+        >
+          {chainIds.length}
+        </span>
+        {expanded ? (
+          <ChevronDown size={12} style={{ color: "#90AB8B", flexShrink: 0 }} />
+        ) : (
+          <ChevronRight size={12} style={{ color: "#90AB8B", flexShrink: 0 }} />
+        )}
+      </button>
+
+      {expanded && (
+        <div style={{ paddingLeft: 18 }}>
+          {members.map((w) => (
+            <WorkflowRow
+              key={w.id}
+              workflow={w}
+              selected={selectedId === w.id}
+              shared={sharedWorkflowIds.has(w.id)}
+              onSelect={() => onSelectWorkflow(w.id)}
+            />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── Single workflow row ──────────────────────────────────────────────────────
+
+function WorkflowRow({
+  workflow,
+  selected,
+  shared,
+  onSelect,
+}: {
+  workflow: Workflow;
+  selected: boolean;
+  shared: boolean;
+  onSelect: () => void;
+}) {
+  const automatable = workflow.automationScore >= 70;
+  return (
+    <button
+      onClick={onSelect}
+      className="w-full flex items-center gap-2 transition-colors text-left rounded-md"
+      style={{
+        padding: "5px 8px",
+        background: selected ? "#EBF4DD" : "transparent",
+        marginBottom: 1,
+      }}
+    >
+      <span
+        style={{
+          width: 6,
+          height: 6,
+          borderRadius: 999,
+          background: THEME_META[workflow.theme].dot,
+          flexShrink: 0,
+        }}
+      />
+      <span
+        style={{
+          flex: 1,
+          fontSize: 12,
+          color: "#3B4953",
+          whiteSpace: "nowrap",
+          overflow: "hidden",
+          textOverflow: "ellipsis",
+        }}
+      >
+        {workflow.name}
+      </span>
+      {shared && (
+        <Link2 size={10} style={{ color: "#90AB8B", flexShrink: 0 }} />
+      )}
+      {automatable && (
+        <Zap size={10} fill="#547863" strokeWidth={0} style={{ flexShrink: 0 }} />
+      )}
+    </button>
+  );
+}
+
+// ─── Sidebar ──────────────────────────────────────────────────────────────────
+
+export function Sidebar({
+  canvases,
+  activeCanvasId,
+  workflows,
+  selectedId,
+  focusedChainKey,
+  sharedWorkflowIds,
+  onSwitchCanvas,
+  onRenameCanvas,
+  onCreateCanvas,
+  onSelectWorkflow,
+  onFocusChain,
+}: {
+  canvases: Canvas[];
+  activeCanvasId: string;
+  workflows: Workflow[];
+  selectedId: string | null;
+  focusedChainKey: string | null;
+  sharedWorkflowIds: Set<string>;
+  onSwitchCanvas: (id: string) => void;
+  onRenameCanvas: (id: string, name: string) => void;
+  onCreateCanvas: (name: string) => void;
+  onSelectWorkflow: (id: string) => void;
+  onFocusChain: (key: string | null) => void;
+}) {
+  return (
     <div
-      className="h-full overflow-y-auto"
+      className="h-full overflow-y-auto flex flex-col"
       style={{
         width: 260,
         background: "#FFFFFF",
@@ -37,175 +334,139 @@ export function Sidebar({
         flexShrink: 0,
       }}
     >
+      {/* Header */}
       <div
         style={{
-          padding: "18px 18px 10px",
-          fontSize: 11,
+          padding: "18px 16px 10px",
+          fontSize: 10,
           fontWeight: 600,
-          color: "#547863",
+          color: "#90AB8B",
           letterSpacing: 1.4,
           textTransform: "uppercase",
         }}
       >
-        Workflow library
+        Canvases
       </div>
 
-      <div className="flex flex-wrap gap-1.5" style={{ padding: "0 14px 14px" }}>
-        <FilterChip
-          label="All"
-          count={workflows.length}
-          active={themeFilter === null}
-          onClick={() => onThemeFilter(null)}
-        />
-        {themes.map((t) => {
-          const count = workflows.filter((w) => w.theme === t).length;
-          return (
-            <FilterChip
-              key={t}
-              label={THEME_META[t].label}
-              count={count}
-              dot={THEME_META[t].dot}
-              active={themeFilter === t}
-              onClick={() => onThemeFilter(themeFilter === t ? null : t)}
-            />
+      {/* Canvas list */}
+      <div className="flex-1" style={{ padding: "0 8px" }}>
+        {canvases.map((canvas) => {
+          const isActive = canvas.id === activeCanvasId;
+          const canvasWorkflows = workflows.filter((w) =>
+            canvas.workflowIds.includes(w.id)
           );
-        })}
-      </div>
+          const chains = computeChains(
+            canvas.workflowIds,
+            canvas.connections
+          );
+          const multiChains = chains.filter((c) => c.length >= 2);
+          const singleIds = chains.filter((c) => c.length === 1).map((c) => c[0]);
 
-      <div style={{ padding: "0 12px 24px" }}>
-        {grouped.map(({ theme, items }) => (
-          <div key={theme} style={{ marginTop: 8 }}>
-            {!themeFilter && (
+          return (
+            <div key={canvas.id} style={{ marginBottom: 4 }}>
+              {/* Canvas row */}
               <div
+                className="flex items-center gap-1.5 rounded-lg"
                 style={{
-                  fontSize: 11,
-                  color: "#90AB8B",
-                  fontWeight: 500,
-                  textTransform: "uppercase",
-                  letterSpacing: 1,
-                  padding: "10px 8px 6px",
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 6,
+                  padding: "7px 8px",
+                  background: isActive ? "#F7FAF2" : "transparent",
+                  marginBottom: 2,
                 }}
               >
-                <span
+                <ChevronDown
+                  size={13}
                   style={{
-                    width: 6,
-                    height: 6,
-                    borderRadius: 999,
-                    background: THEME_META[theme].dot,
+                    color: "#90AB8B",
+                    transform: isActive ? "rotate(0deg)" : "rotate(-90deg)",
+                    transition: "transform 0.15s",
+                    flexShrink: 0,
                   }}
                 />
-                {THEME_META[theme].label}
+                <CanvasName
+                  name={canvas.name}
+                  active={isActive}
+                  onRename={(name) => onRenameCanvas(canvas.id, name)}
+                  onClick={() => onSwitchCanvas(canvas.id)}
+                />
               </div>
-            )}
-            {items.length === 0 && (
-              <div
-                style={{
-                  fontSize: 11,
-                  color: "#90AB8B",
-                  padding: "4px 14px 6px",
-                  fontStyle: "italic",
-                }}
-              >
-                No workflows yet
-              </div>
-            )}
-            {items.map((w) => {
-              const active = selectedId === w.id;
-              const automatable = w.automationScore >= 70;
-              return (
-                <button
-                  key={w.id}
-                  onClick={() => onSelect(w.id)}
-                  className="w-full flex items-center gap-2 transition-colors text-left"
-                  style={{
-                    padding: "8px 10px",
-                    borderRadius: 8,
-                    background: active ? "#EBF4DD" : "transparent",
-                    color: "#3B4953",
-                    fontSize: 13,
-                    marginBottom: 1,
-                  }}
-                >
-                  <span
-                    style={{
-                      width: 8,
-                      height: 8,
-                      borderRadius: 999,
-                      background: THEME_META[theme].dot,
-                      flexShrink: 0,
-                    }}
-                  />
-                  <span
-                    style={{
-                      flex: 1,
-                      whiteSpace: "nowrap",
-                      overflow: "hidden",
-                      textOverflow: "ellipsis",
-                    }}
-                  >
-                    {w.name}
-                  </span>
-                  {automatable && (
-                    <span
-                      className="flex items-center gap-0.5"
+
+              {/* Canvas contents (only when active) */}
+              {isActive && (
+                <div style={{ paddingLeft: 8, paddingBottom: 8 }}>
+                  {/* Multi-workflow chains */}
+                  {multiChains.map((chainIds) => {
+                    const ckey = chainKey(chainIds);
+                    const chainWfs = chainIds
+                      .map((id) => canvasWorkflows.find((w) => w.id === id))
+                      .filter(Boolean) as Workflow[];
+                    const name = canvas.chainNames[ckey] ?? inferChainName(chainWfs);
+                    return (
+                      <ChainRow
+                        key={ckey}
+                        chainIds={chainIds}
+                        chainName={name}
+                        workflows={canvasWorkflows}
+                        selectedId={selectedId}
+                        focusedChainKey={focusedChainKey}
+                        sharedWorkflowIds={sharedWorkflowIds}
+                        onSelectWorkflow={onSelectWorkflow}
+                        onFocusChain={onFocusChain}
+                      />
+                    );
+                  })}
+
+                  {/* Ungrouped single workflows */}
+                  {singleIds.length > 0 && (
+                    <div>
+                      {multiChains.length > 0 && (
+                        <div
+                          style={{
+                            height: 1,
+                            background: "#EBF4DD",
+                            margin: "6px 4px",
+                          }}
+                        />
+                      )}
+                      {singleIds.map((id) => {
+                        const w = canvasWorkflows.find((x) => x.id === id);
+                        if (!w) return null;
+                        return (
+                          <WorkflowRow
+                            key={id}
+                            workflow={w}
+                            selected={selectedId === id}
+                            shared={sharedWorkflowIds.has(id)}
+                            onSelect={() => onSelectWorkflow(id)}
+                          />
+                        );
+                      })}
+                    </div>
+                  )}
+
+                  {canvasWorkflows.length === 0 && (
+                    <div
                       style={{
-                        background: "#547863",
-                        color: "#EBF4DD",
-                        fontSize: 9,
-                        fontWeight: 500,
-                        padding: "2px 6px",
-                        borderRadius: 999,
+                        fontSize: 11,
+                        color: "#90AB8B",
+                        padding: "4px 8px",
+                        fontStyle: "italic",
                       }}
                     >
-                      <Zap size={9} fill="#EBF4DD" strokeWidth={0} />
-                      auto
-                    </span>
+                      No workflows yet
+                    </div>
                   )}
-                </button>
-              );
-            })}
-          </div>
-        ))}
+                </div>
+              )}
+
+              {/* Divider between canvases */}
+              <div style={{ height: 1, background: "#EBF4DD", margin: "4px 0" }} />
+            </div>
+          );
+        })}
+
+        {/* New canvas */}
+        <NewCanvasRow onCreate={onCreateCanvas} />
       </div>
     </div>
-  );
-}
-
-function FilterChip({
-  label,
-  count,
-  dot,
-  active,
-  onClick,
-}: {
-  label: string;
-  count: number;
-  dot?: string;
-  active: boolean;
-  onClick: () => void;
-}) {
-  return (
-    <button
-      onClick={onClick}
-      className="flex items-center gap-1.5 transition-colors"
-      style={{
-        background: active ? "#3B4953" : "#F7FAF2",
-        color: active ? "#EBF4DD" : "#547863",
-        border: active ? "1px solid #3B4953" : "1px solid #EBF4DD",
-        padding: "4px 9px",
-        borderRadius: 999,
-        fontSize: 11,
-        fontWeight: 500,
-      }}
-    >
-      {dot && (
-        <span style={{ width: 6, height: 6, borderRadius: 999, background: dot }} />
-      )}
-      {label}
-      <span style={{ opacity: 0.7, fontSize: 10 }}>{count}</span>
-    </button>
   );
 }

@@ -1,7 +1,7 @@
 export type Theme = "sales" | "marketing" | "operations" | "finance";
 
 export type IOItem = { name: string; source: string };
-export type Task = { n: number; text: string; note?: string };
+export type Step = { n: number; text: string; note?: string };
 
 export type Workflow = {
   id: string;
@@ -12,7 +12,7 @@ export type Workflow = {
   why: string;
   when: string;
   inputs: IOItem[];
-  tasks: Task[];
+  steps: Step[];
   outputs: IOItem[];
   tools: string[];
   automationScore: number;
@@ -23,12 +23,75 @@ export type Workflow = {
 
 export type Connection = { from: string; to: string; label?: string };
 
+export type Canvas = {
+  id: string;
+  name: string;
+  workflowIds: string[];
+  connections: Connection[];
+  chainNames: Record<string, string>; // chainKey → user-overridden name
+};
+
+// ─── Chain utilities ──────────────────────────────────────────────────────────
+
+export function computeChains(workflowIds: string[], connections: Connection[]): string[][] {
+  const adj = new Map<string, Set<string>>();
+  for (const id of workflowIds) adj.set(id, new Set());
+  for (const c of connections) {
+    if (adj.has(c.from) && adj.has(c.to)) {
+      adj.get(c.from)!.add(c.to);
+      adj.get(c.to)!.add(c.from);
+    }
+  }
+  const visited = new Set<string>();
+  const chains: string[][] = [];
+  for (const id of workflowIds) {
+    if (visited.has(id)) continue;
+    const component: string[] = [];
+    const queue = [id];
+    while (queue.length > 0) {
+      const cur = queue.shift()!;
+      if (visited.has(cur)) continue;
+      visited.add(cur);
+      component.push(cur);
+      for (const nb of (adj.get(cur) ?? [])) {
+        if (!visited.has(nb)) queue.push(nb);
+      }
+    }
+    chains.push(component);
+  }
+  return chains;
+}
+
+export function chainKey(ids: string[]): string {
+  return [...ids].sort().join("|");
+}
+
+const PHASE_WORDS = /\s+(qualif\w+|process\w+|review\w+|approv\w+|screen\w+|handl\w+|manag\w+|track\w+|call|send|publish\w*|pipeline|workflow|flow)$/i;
+const CHAIN_SUFFIXES: Record<Theme, string> = {
+  sales: "conversion",
+  marketing: "campaign",
+  operations: "process",
+  finance: "cycle",
+};
+
+export function inferChainName(workflows: Workflow[]): string {
+  if (workflows.length === 0) return "Unnamed";
+  if (workflows.length === 1) return workflows[0].name;
+  const sorted = [...workflows].sort((a, b) => a.x - b.x);
+  const base = sorted[0].name.replace(PHASE_WORDS, "").trim();
+  return `${base} ${CHAIN_SUFFIXES[sorted[0].theme]}`;
+}
+
+// ─── Theme metadata ───────────────────────────────────────────────────────────
+
 export const THEME_META: Record<Theme, { label: string; dot: string }> = {
   sales: { label: "Sales", dot: "#547863" },
   marketing: { label: "Marketing", dot: "#C99461" },
   operations: { label: "Operations", dot: "#6B8AB8" },
   finance: { label: "Finance", dot: "#B5894C" },
 };
+
+// ─── Seed data ────────────────────────────────────────────────────────────────
 
 export const initialWorkflows: Workflow[] = [
   {
@@ -43,7 +106,7 @@ export const initialWorkflows: Workflow[] = [
       { name: "Lead form data", source: "Website" },
       { name: "ICP criteria", source: "Notion" },
     ],
-    tasks: [
+    steps: [
       { n: 1, text: "Receive inbound lead" },
       { n: 2, text: "Score against ICP", note: "If score > 7, proceed" },
       { n: 3, text: "Send personalised outreach" },
@@ -71,7 +134,7 @@ export const initialWorkflows: Workflow[] = [
       { name: "Qualified lead", source: "HubSpot" },
       { name: "Discovery script", source: "Notion" },
     ],
-    tasks: [
+    steps: [
       { n: 1, text: "Schedule call" },
       { n: 2, text: "Run discovery", note: "If budget confirmed, advance" },
       { n: 3, text: "Capture pain points" },
@@ -99,7 +162,7 @@ export const initialWorkflows: Workflow[] = [
       { name: "Discovery notes", source: "HubSpot" },
       { name: "Pricing matrix", source: "Sheets" },
     ],
-    tasks: [
+    steps: [
       { n: 1, text: "Draft proposal" },
       { n: 2, text: "Internal review", note: "If discount > 15%, escalate" },
       { n: 3, text: "Send to prospect" },
@@ -127,7 +190,7 @@ export const initialWorkflows: Workflow[] = [
       { name: "Signed proposal", source: "DocuSign" },
       { name: "Onboarding template", source: "Notion" },
     ],
-    tasks: [
+    steps: [
       { n: 1, text: "Mark deal closed-won" },
       { n: 2, text: "Trigger invoice", note: "If annual, send PO request" },
       { n: 3, text: "Kick off onboarding" },
@@ -155,7 +218,7 @@ export const initialWorkflows: Workflow[] = [
       { name: "Editorial calendar", source: "Notion" },
       { name: "Subscriber list", source: "Mailchimp" },
     ],
-    tasks: [
+    steps: [
       { n: 1, text: "Compile stories" },
       { n: 2, text: "Draft newsletter", note: "If long-form > 600 words, split" },
       { n: 3, text: "Schedule send" },
@@ -182,7 +245,7 @@ export const initialWorkflows: Workflow[] = [
       { name: "Draft article", source: "Google Docs" },
       { name: "Style guide", source: "Notion" },
     ],
-    tasks: [
+    steps: [
       { n: 1, text: "Editorial review" },
       { n: 2, text: "Run SEO check", note: "If score < 80, revise" },
       { n: 3, text: "Publish to CMS" },
@@ -209,7 +272,7 @@ export const initialWorkflows: Workflow[] = [
       { name: "Vendor request", source: "Airtable" },
       { name: "Compliance checklist", source: "Notion" },
     ],
-    tasks: [
+    steps: [
       { n: 1, text: "Verify documents" },
       { n: 2, text: "Set up payment", note: "If foreign vendor, add tax form" },
       { n: 3, text: "Provision access" },
@@ -236,7 +299,7 @@ export const initialWorkflows: Workflow[] = [
       { name: "Invoice PDF", source: "Email" },
       { name: "Approval matrix", source: "Sheets" },
     ],
-    tasks: [
+    steps: [
       { n: 1, text: "Parse invoice fields" },
       { n: 2, text: "Route for approval", note: "If > $5k, dual approval" },
       { n: 3, text: "Schedule payment" },
@@ -253,8 +316,14 @@ export const initialWorkflows: Workflow[] = [
   },
 ];
 
-export const initialConnections: Connection[] = [
-  { from: "qual", to: "discovery", label: "Qualified lead" },
-  { from: "discovery", to: "proposal", label: "Discovery complete" },
-  { from: "proposal", to: "close", label: "Proposal signed" },
-];
+export const initialCanvas: Canvas = {
+  id: "canvas-default",
+  name: "My Business",
+  workflowIds: initialWorkflows.map((w) => w.id),
+  connections: [
+    { from: "qual", to: "discovery", label: "Qualified lead" },
+    { from: "discovery", to: "proposal", label: "Discovery complete" },
+    { from: "proposal", to: "close", label: "Proposal signed" },
+  ],
+  chainNames: {},
+};

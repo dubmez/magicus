@@ -32,7 +32,7 @@ export async function POST(req: NextRequest) {
           `Why: ${w.why}`,
           `When: ${w.when}`,
           `Inputs: ${w.inputs.map((i) => `${i.name} (${i.source})`).join(", ")}`,
-          `Tasks: ${w.tasks.map((t) => `${t.n}. ${t.text}${t.note ? ` [${t.note}]` : ""}`).join(" → ")}`,
+          `Tasks: ${w.steps.map((t) => `${t.n}. ${t.text}${t.note ? ` [${t.note}]` : ""}`).join(" → ")}`,
           `Outputs: ${w.outputs.map((o) => `${o.name} (${o.source})`).join(", ")}`,
           `Tools: ${w.tools.join(", ")}`,
           `Automation score: ${w.automationScore}%`,

@@ -3,7 +3,7 @@ import type { Workflow } from "./workflows";
 export function workflowToMarkdown(w: Workflow): string {
   const inputs = w.inputs.map((i) => `- **${i.name}** _(${i.source})_`).join("\n");
   const outputs = w.outputs.map((o) => `- **${o.name}** _(${o.source})_`).join("\n");
-  const tasks = w.tasks
+  const tasks = w.steps
     .map((t) => `${t.n}. ${t.text}${t.note ? `\n   > _${t.note}_` : ""}`)
     .join("\n");
   const tools = w.tools.map((t) => `\`${t}\``).join(" · ");
@@ -21,7 +21,7 @@ ${w.when}
 ## Inputs
 ${inputs}
 
-## Tasks
+## Steps
 ${tasks}
 
 ## Outputs
@@ -46,7 +46,7 @@ Inputs:
 ${w.inputs.map((i) => `  - ${i.name} (from ${i.source})`).join("\n")}
 
 Steps:
-${w.tasks.map((t) => `  ${t.n}. ${t.text}${t.note ? ` — ${t.note}` : ""}`).join("\n")}
+${w.steps.map((t) => `  ${t.n}. ${t.text}${t.note ? ` — ${t.note}` : ""}`).join("\n")}
 
 Outputs:
 ${w.outputs.map((o) => `  - ${o.name} (to ${o.source})`).join("\n")}

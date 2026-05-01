@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { Canvas } from "./components/canvas";
 import { TopBar, type View } from "./components/top-bar";
 import { Sidebar } from "./components/sidebar";
@@ -9,7 +9,7 @@ import { ExportModal } from "./components/export-modal";
 import { AutomateModal } from "./components/automate-modal";
 import { LibraryView } from "./components/library-view";
 import { Landing } from "./components/landing";
-import { type Workflow, type Theme } from "@/lib/workflows";
+import { type Workflow, type Canvas as CanvasType, type Theme, chainKey } from "@/lib/workflows";
 import { useWorkflows } from "@/lib/use-workflows";
 import { workflowToMarkdown, allWorkflowsToMarkdown } from "@/lib/markdown";
 
@@ -48,7 +48,7 @@ function generateWorkflow(id: string, description: string, clarification?: strin
       { name: "Trigger event", source: "Manual" },
       { name: "Reference docs", source: "Notion" },
     ],
-    tasks: [
+    steps: [
       { n: 1, text: "Receive request" },
       { n: 2, text: "Process & verify", note: "Flag exceptions for human review" },
       { n: 3, text: "Complete & log" },
@@ -67,27 +67,101 @@ function generateWorkflow(id: string, description: string, clarification?: strin
 }
 
 export default function Home() {
-  const { workflows, setWorkflows, connections, setConnections } = useWorkflows();
+  const {
+    workflows,
+    setWorkflows,
+    canvases,
+    setCanvases,
+    activeCanvasId,
+    setActiveCanvasId,
+    activeCanvas,
+  } = useWorkflows();
+
   const [started, setStarted] = useState(false);
   const [view, setView] = useState<View>("canvas");
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [focusId, setFocusId] = useState<string | null>(null);
-  const [themeFilter, setThemeFilter] = useState<Theme | null>(null);
+  const [focusedChainKey, setFocusedChainKey] = useState<string | null>(null);
   const [connectMode, setConnectMode] = useState<{ fromId: string } | null>(null);
   const [newOpen, setNewOpen] = useState(false);
   const [exportTarget, setExportTarget] = useState<"all" | { id: string } | null>(null);
   const [automateOpen, setAutomateOpen] = useState(false);
+
+  // Workflows visible on the active canvas
+  const activeWorkflows = useMemo(
+    () => workflows.filter((w) => activeCanvas?.workflowIds.includes(w.id)),
+    [workflows, activeCanvas]
+  );
+
+  // Which workflow IDs appear in more than one canvas
+  const sharedWorkflowIds = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const c of canvases) {
+      for (const id of c.workflowIds) counts.set(id, (counts.get(id) ?? 0) + 1);
+    }
+    return new Set([...counts.entries()].filter(([, n]) => n > 1).map(([id]) => id));
+  }, [canvases]);
 
   const selected = useMemo(
     () => workflows.find((w) => w.id === selectedId) ?? null,
     [workflows, selectedId]
   );
 
+  // ── Canvas helpers ────────────────────────────────────────────────────────
+
+  const updateCanvas = useCallback(
+    (id: string, changes: Partial<CanvasType>) => {
+      setCanvases((prev) => prev.map((c) => (c.id === id ? { ...c, ...changes } : c)));
+    },
+    [setCanvases]
+  );
+
+  const updateActiveCanvas = useCallback(
+    (changes: Partial<CanvasType>) => {
+      if (activeCanvas) updateCanvas(activeCanvas.id, changes);
+    },
+    [activeCanvas, updateCanvas]
+  );
+
+  // ── Sidebar handlers ──────────────────────────────────────────────────────
+
+  const handleSwitchCanvas = (id: string) => {
+    setActiveCanvasId(id);
+    setSelectedId(null);
+    setSelectedIds(new Set());
+    setFocusedChainKey(null);
+    setView("canvas");
+  };
+
+  const handleRenameCanvas = (id: string, name: string) => {
+    updateCanvas(id, { name });
+  };
+
+  const handleCreateCanvas = (name: string) => {
+    const id = `canvas-${Date.now()}`;
+    setCanvases((prev) => [
+      ...prev,
+      { id, name, workflowIds: [], connections: [], chainNames: {} },
+    ]);
+    setActiveCanvasId(id);
+    setSelectedId(null);
+    setSelectedIds(new Set());
+    setFocusedChainKey(null);
+    setView("canvas");
+  };
+
   const handleSelectFromSidebar = (id: string) => {
     setSelectedId(id);
     setSelectedIds(new Set());
+    setFocusedChainKey(null);
     if (view === "canvas") setFocusId(id + ":" + Date.now());
+  };
+
+  const handleFocusChain = (key: string | null) => {
+    setFocusedChainKey(key);
+    setSelectedId(null);
+    setSelectedIds(new Set());
   };
 
   const handleMultiSelect = (id: string) => {
@@ -99,6 +173,8 @@ export default function Home() {
     setSelectedId(null);
   };
 
+  // ── Workflow CRUD ─────────────────────────────────────────────────────────
+
   const handleOpenFromLibrary = (id: string) => {
     setSelectedId(id);
     setView("canvas");
@@ -108,11 +184,17 @@ export default function Home() {
   const handleMap = (description: string, clarification?: string) => {
     const id = `wf-${Date.now()}`;
     const newWf = generateWorkflow(id, description, clarification);
-    const maxX = workflows.length > 0 ? Math.max(...workflows.map((w) => w.x)) : 0;
+    const maxX = activeWorkflows.length > 0
+      ? Math.max(...activeWorkflows.map((w) => w.x))
+      : 0;
     newWf.x = maxX + 800;
     newWf.y = 400;
     setWorkflows((prev) => [...prev, newWf]);
+    updateActiveCanvas({
+      workflowIds: [...(activeCanvas?.workflowIds ?? []), id],
+    });
     setSelectedId(id);
+    setSelectedIds(new Set());
     setView("canvas");
     setFocusId(id + ":" + Date.now());
     setNewOpen(false);
@@ -125,11 +207,19 @@ export default function Home() {
 
   const handleDelete = (id: string) => {
     setWorkflows((prev) => prev.filter((w) => w.id !== id));
-    setConnections((prev) => prev.filter((c) => c.from !== id && c.to !== id));
+    setCanvases((prev) =>
+      prev.map((c) => ({
+        ...c,
+        workflowIds: c.workflowIds.filter((wid) => wid !== id),
+        connections: c.connections.filter((conn) => conn.from !== id && conn.to !== id),
+      }))
+    );
     if (selectedId === id) setSelectedId(null);
     setSelectedIds((prev) => { const next = new Set(prev); next.delete(id); return next; });
     if (connectMode?.fromId === id) setConnectMode(null);
   };
+
+  // ── Connection handlers ───────────────────────────────────────────────────
 
   const handleStartChain = (fromId: string) => {
     setConnectMode({ fromId });
@@ -138,23 +228,38 @@ export default function Home() {
   };
 
   const handleCreateConnection = (fromId: string, toId: string) => {
-    const exists = connections.some((c) => c.from === fromId && c.to === toId);
+    if (!activeCanvas) return;
+    const exists = activeCanvas.connections.some(
+      (c) => c.from === fromId && c.to === toId
+    );
     if (!exists) {
-      setConnections((prev) => [...prev, { from: fromId, to: toId, label: "Triggers" }]);
+      updateActiveCanvas({
+        connections: [
+          ...activeCanvas.connections,
+          { from: fromId, to: toId, label: "Triggers" },
+        ],
+      });
     }
     setConnectMode(null);
     setSelectedId(toId);
+    setSelectedIds(new Set());
   };
 
   const handleDeleteConnection = (fromId: string, toId: string) => {
-    setConnections((prev) => prev.filter((c) => !(c.from === fromId && c.to === toId)));
+    updateActiveCanvas({
+      connections: activeCanvas.connections.filter(
+        (c) => !(c.from === fromId && c.to === toId)
+      ),
+    });
   };
 
-  const automateWorkflows = useMemo(() => {
-    if (selectedIds.size > 0) return workflows.filter((w) => selectedIds.has(w.id));
-    if (selectedId) return workflows.filter((w) => w.id === selectedId);
-    return [];
-  }, [selectedIds, selectedId, workflows]);
+  const handleUpdateChainName = (key: string, name: string) => {
+    updateActiveCanvas({
+      chainNames: { ...activeCanvas.chainNames, [key]: name },
+    });
+  };
+
+  // ── Export ────────────────────────────────────────────────────────────────
 
   const exportTitle =
     exportTarget === "all"
@@ -164,13 +269,23 @@ export default function Home() {
       : "";
 
   const exportMarkdown = useMemo(() => {
-    if (exportTarget === "all") return allWorkflowsToMarkdown(workflows);
+    if (exportTarget === "all") return allWorkflowsToMarkdown(activeWorkflows);
     if (exportTarget && "id" in exportTarget) {
       const w = workflows.find((x) => x.id === exportTarget.id);
       return w ? workflowToMarkdown(w) : "";
     }
     return "";
-  }, [exportTarget, workflows]);
+  }, [exportTarget, activeWorkflows, workflows]);
+
+  // ── Automate ──────────────────────────────────────────────────────────────
+
+  const automateWorkflows = useMemo(() => {
+    if (selectedIds.size > 0) return activeWorkflows.filter((w) => selectedIds.has(w.id));
+    if (selectedId) return activeWorkflows.filter((w) => w.id === selectedId);
+    return [];
+  }, [selectedIds, selectedId, activeWorkflows]);
+
+  // ── Render ────────────────────────────────────────────────────────────────
 
   if (!started) {
     return (
@@ -198,34 +313,45 @@ export default function Home() {
 
       <div className="flex flex-1 overflow-hidden">
         <Sidebar
+          canvases={canvases}
+          activeCanvasId={activeCanvasId}
           workflows={workflows}
           selectedId={selectedId}
-          themeFilter={themeFilter}
-          onSelect={handleSelectFromSidebar}
-          onThemeFilter={setThemeFilter}
+          focusedChainKey={focusedChainKey}
+          sharedWorkflowIds={sharedWorkflowIds}
+          onSwitchCanvas={handleSwitchCanvas}
+          onRenameCanvas={handleRenameCanvas}
+          onCreateCanvas={handleCreateCanvas}
+          onSelectWorkflow={handleSelectFromSidebar}
+          onFocusChain={handleFocusChain}
         />
 
         <div className="relative flex-1 flex overflow-hidden">
           <div className="flex-1 relative overflow-hidden">
             {view === "canvas" ? (
               <Canvas
-                workflows={workflows}
-                connections={connections}
+                workflows={activeWorkflows}
+                canvas={activeCanvas ?? { id: "", name: "", workflowIds: [], connections: [], chainNames: {} }}
                 selectedId={selectedId}
                 selectedIds={selectedIds}
-                themeFilter={themeFilter}
                 connectMode={connectMode}
-                onSelect={(id) => { setSelectedId(id); setSelectedIds(new Set()); }}
+                focusedChainKey={focusedChainKey}
+                sharedWorkflowIds={sharedWorkflowIds}
+                onSelect={(id) => {
+                  setSelectedId(id);
+                  setSelectedIds(new Set());
+                  setFocusedChainKey(null);
+                }}
                 onMultiSelect={handleMultiSelect}
                 onCreateConnection={handleCreateConnection}
                 onDeleteConnection={handleDeleteConnection}
                 onCancelConnect={() => setConnectMode(null)}
+                onUpdateChainName={handleUpdateChainName}
                 focusId={focusId}
               />
             ) : (
               <LibraryView
-                workflows={workflows}
-                themeFilter={themeFilter}
+                workflows={activeWorkflows}
                 onOpen={handleOpenFromLibrary}
                 onDelete={handleDelete}
               />
@@ -261,7 +387,7 @@ export default function Home() {
       <AutomateModal
         open={automateOpen}
         workflows={automateWorkflows}
-        connections={connections}
+        connections={activeCanvas?.connections ?? []}
         onClose={() => setAutomateOpen(false)}
       />
     </div>
