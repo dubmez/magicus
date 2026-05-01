@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Sparkles, Send, Loader2, X, ArrowRight } from "lucide-react";
+import { Sparkles, Send, Loader2, X, ArrowRight, Mic } from "lucide-react";
 
 const dmSerif = {
   fontFamily: "var(--font-dm-serif), serif",
@@ -9,6 +9,36 @@ const dmSerif = {
 };
 
 type Stage = "idle" | "generating";
+
+type SpeechRecognitionResultLike = {
+  isFinal: boolean;
+  0: { transcript: string };
+};
+type SpeechRecognitionEventLike = {
+  resultIndex: number;
+  results: ArrayLike<SpeechRecognitionResultLike>;
+};
+type SpeechRecognitionLike = {
+  continuous: boolean;
+  interimResults: boolean;
+  lang: string;
+  start: () => void;
+  stop: () => void;
+  abort: () => void;
+  onresult: ((e: SpeechRecognitionEventLike) => void) | null;
+  onend: (() => void) | null;
+  onerror: ((e: { error: string }) => void) | null;
+};
+type SpeechRecognitionCtor = new () => SpeechRecognitionLike;
+
+function getSpeechRecognition(): SpeechRecognitionCtor | null {
+  if (typeof window === "undefined") return null;
+  const w = window as unknown as {
+    SpeechRecognition?: SpeechRecognitionCtor;
+    webkitSpeechRecognition?: SpeechRecognitionCtor;
+  };
+  return w.SpeechRecognition ?? w.webkitSpeechRecognition ?? null;
+}
 
 export function Landing({
   mode,
@@ -23,14 +53,82 @@ export function Landing({
 }) {
   const [stage, setStage] = useState<Stage>("idle");
   const [text, setText] = useState("");
+  const [voiceSupported, setVoiceSupported] = useState(false);
+  const [isRecording, setIsRecording] = useState(false);
+  const [permissionDenied, setPermissionDenied] = useState(false);
   const taRef = useRef<HTMLTextAreaElement>(null);
+  const recognitionRef = useRef<SpeechRecognitionLike | null>(null);
+  const baseTextRef = useRef("");
+  const denyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     taRef.current?.focus();
   }, []);
 
+  useEffect(() => {
+    setVoiceSupported(getSpeechRecognition() !== null);
+    return () => {
+      recognitionRef.current?.abort();
+      if (denyTimerRef.current) clearTimeout(denyTimerRef.current);
+    };
+  }, []);
+
+  const stopRecording = () => {
+    recognitionRef.current?.stop();
+  };
+
+  const startRecording = () => {
+    const Ctor = getSpeechRecognition();
+    if (!Ctor) return;
+    const rec = new Ctor();
+    rec.continuous = true;
+    rec.interimResults = true;
+    rec.lang = "en-US";
+
+    baseTextRef.current = text.length > 0 && !text.endsWith(" ") ? text + " " : text;
+
+    rec.onresult = (e) => {
+      let interim = "";
+      let final = "";
+      for (let i = 0; i < e.results.length; i++) {
+        const r = e.results[i];
+        if (r.isFinal) final += r[0].transcript;
+        else interim += r[0].transcript;
+      }
+      setText(baseTextRef.current + final + interim);
+    };
+    rec.onend = () => {
+      setIsRecording(false);
+      recognitionRef.current = null;
+    };
+    rec.onerror = (e) => {
+      if (e.error === "not-allowed" || e.error === "service-not-allowed") {
+        setPermissionDenied(true);
+        if (denyTimerRef.current) clearTimeout(denyTimerRef.current);
+        denyTimerRef.current = setTimeout(() => setPermissionDenied(false), 3000);
+      }
+      setIsRecording(false);
+    };
+
+    recognitionRef.current = rec;
+    setPermissionDenied(false);
+    setIsRecording(true);
+    try {
+      rec.start();
+    } catch {
+      setIsRecording(false);
+      recognitionRef.current = null;
+    }
+  };
+
+  const toggleRecording = () => {
+    if (isRecording) stopRecording();
+    else startRecording();
+  };
+
   const submit = () => {
     if (stage !== "idle" || text.trim().length === 0) return;
+    if (isRecording) stopRecording();
     setStage("generating");
     setTimeout(() => {
       onMap(text);
@@ -105,7 +203,11 @@ export function Landing({
         value={text}
         onChange={(e) => setText(e.target.value)}
         disabled={stage !== "idle"}
-        placeholder="When a customer requests a refund, our support team checks eligibility, processes it in Stripe, and emails the customer..."
+        placeholder={
+          isRecording
+            ? "Listening…"
+            : "When a customer requests a refund, our support team checks eligibility, processes it in Stripe, and emails the customer..."
+        }
         rows={5}
         onKeyDown={(e) => {
           if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) submit();
@@ -125,6 +227,18 @@ export function Landing({
         }}
       />
 
+      {permissionDenied && (
+        <div
+          style={{
+            marginTop: 8,
+            fontSize: 12,
+            color: "#90AB8B",
+          }}
+        >
+          Microphone access denied
+        </div>
+      )}
+
       <div
         className="flex items-center justify-between"
         style={{ marginTop: 18 }}
@@ -142,6 +256,30 @@ export function Landing({
             >
               Or explore the demo workflows
               <ArrowRight size={13} />
+            </button>
+          )}
+          {voiceSupported && (
+            <button
+              type="button"
+              onClick={toggleRecording}
+              disabled={stage !== "idle"}
+              className={isRecording ? "magicus-mic-pulse" : "hover:bg-[#EBF4DD] transition-colors"}
+              aria-label={isRecording ? "Stop recording" : "Start voice input"}
+              aria-pressed={isRecording}
+              style={{
+                background: "transparent",
+                color: isRecording ? "#F59E0B" : "#547863",
+                border: "none",
+                padding: "11px",
+                borderRadius: 999,
+                cursor: stage !== "idle" ? "not-allowed" : "pointer",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                opacity: stage !== "idle" ? 0.5 : 1,
+              }}
+            >
+              <Mic size={16} />
             </button>
           )}
           <button

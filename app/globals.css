@@ -8,3 +8,16 @@ body {
 body {
   font-family: var(--font-dm-sans), sans-serif;
 }
+
+@keyframes magicus-mic-pulse {
+  0%, 100% {
+    box-shadow: 0 0 0 0 rgba(245, 158, 11, 0.45);
+  }
+  50% {
+    box-shadow: 0 0 0 8px rgba(245, 158, 11, 0);
+  }
+}
+
+.magicus-mic-pulse {
+  animation: magicus-mic-pulse 1.4s ease-in-out infinite;
+}
