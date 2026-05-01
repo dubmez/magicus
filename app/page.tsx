@@ -2,12 +2,11 @@
 
 import { useCallback, useMemo, useState } from "react";
 import { Canvas } from "./components/canvas";
-import { TopBar, type View } from "./components/top-bar";
+import { TopBar } from "./components/top-bar";
 import { Sidebar } from "./components/sidebar";
 import { DetailPanel } from "./components/detail-panel";
 import { ExportModal } from "./components/export-modal";
 import { AutomateModal } from "./components/automate-modal";
-import { LibraryView } from "./components/library-view";
 import { Landing } from "./components/landing";
 import { type Workflow, type Canvas as CanvasType, type Theme, type Connection } from "@/lib/workflows";
 import { useWorkflows } from "@/lib/use-workflows";
@@ -73,7 +72,6 @@ export default function Home() {
   } = useWorkflows();
 
   const [started, setStarted] = useState(false);
-  const [view, setView] = useState<View>("canvas");
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [focusId, setFocusId] = useState<string | null>(null);
@@ -136,7 +134,6 @@ export default function Home() {
     setSelectedId(null);
     setSelectedIds(new Set());
     setFocusedChainKey(null);
-    setView("canvas");
   };
 
   const handleRenameCanvas = (id: string, name: string) => {
@@ -153,14 +150,13 @@ export default function Home() {
     setSelectedId(null);
     setSelectedIds(new Set());
     setFocusedChainKey(null);
-    setView("canvas");
   };
 
   const handleSelectFromSidebar = (id: string) => {
     setSelectedId(id);
     setSelectedIds(new Set());
     setFocusedChainKey(null);
-    if (view === "canvas") setFocusId(id + ":" + Date.now());
+    setFocusId(id + ":" + Date.now());
   };
 
   const handleFocusChain = (key: string | null) => {
@@ -179,12 +175,6 @@ export default function Home() {
   };
 
   // ── Workflow CRUD ─────────────────────────────────────────────────────────
-
-  const handleOpenFromLibrary = (id: string) => {
-    setSelectedId(id);
-    setView("canvas");
-    setFocusId(id + ":" + Date.now());
-  };
 
   const handleMap = async (description: string) => {
     // Never add new workflows to a read-only canvas — switch to the editable one
@@ -243,7 +233,6 @@ export default function Home() {
     });
     setSelectedId(firstId);
     setSelectedIds(new Set());
-    setView("canvas");
     setFocusId(firstId + ":" + now);
     setNewOpen(false);
     setStarted(true);
@@ -275,7 +264,6 @@ export default function Home() {
     if (activeReadOnly) return;
     setConnectMode({ fromId });
     setSelectedId(null);
-    setView("canvas");
   };
 
   const handleCreateConnection = (fromId: string, toId: string) => {
@@ -366,8 +354,6 @@ export default function Home() {
       style={{ background: "#F7FAF2", fontFamily: "var(--font-dm-sans), sans-serif" }}
     >
       <TopBar
-        view={view}
-        onView={setView}
         onExport={() => setExportTarget("all")}
         onNew={() => setNewOpen(true)}
         onAutomate={() => setAutomateOpen(true)}
@@ -391,34 +377,26 @@ export default function Home() {
 
         <div className="relative flex-1 flex overflow-hidden">
           <div className="flex-1 relative overflow-hidden">
-            {view === "canvas" ? (
-              <Canvas
-                workflows={activeWorkflows}
-                canvas={activeCanvas ?? { id: "", name: "", workflowIds: [], connections: [], chainNames: {} }}
-                selectedId={selectedId}
-                selectedIds={selectedIds}
-                connectMode={connectMode}
-                focusedChainKey={focusedChainKey}
-                sharedWorkflowIds={sharedWorkflowIds}
-                onSelect={(id) => {
-                  setSelectedId(id);
-                  setSelectedIds(new Set());
-                  setFocusedChainKey(null);
-                }}
-                onMultiSelect={handleMultiSelect}
-                onCreateConnection={handleCreateConnection}
-                onDeleteConnection={handleDeleteConnection}
-                onCancelConnect={() => setConnectMode(null)}
-                onUpdateChainName={handleUpdateChainName}
-                focusId={focusId}
-              />
-            ) : (
-              <LibraryView
-                workflows={activeWorkflows}
-                onOpen={handleOpenFromLibrary}
-                onDelete={handleDelete}
-              />
-            )}
+            <Canvas
+              workflows={activeWorkflows}
+              canvas={activeCanvas ?? { id: "", name: "", workflowIds: [], connections: [], chainNames: {} }}
+              selectedId={selectedId}
+              selectedIds={selectedIds}
+              connectMode={connectMode}
+              focusedChainKey={focusedChainKey}
+              sharedWorkflowIds={sharedWorkflowIds}
+              onSelect={(id) => {
+                setSelectedId(id);
+                setSelectedIds(new Set());
+                setFocusedChainKey(null);
+              }}
+              onMultiSelect={handleMultiSelect}
+              onCreateConnection={handleCreateConnection}
+              onDeleteConnection={handleDeleteConnection}
+              onCancelConnect={() => setConnectMode(null)}
+              onUpdateChainName={handleUpdateChainName}
+              focusId={focusId}
+            />
           </div>
 
           <DetailPanel

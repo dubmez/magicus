@@ -1,7 +1,7 @@
 "use client";
 
-import { useState, useRef } from "react";
-import { Plus, ChevronRight, ChevronDown, Check, Zap, Link2 } from "lucide-react";
+import { useState } from "react";
+import { Plus, ChevronRight, ChevronDown, Zap, Link2 } from "lucide-react";
 import type { Canvas, Workflow } from "@/lib/workflows";
 import {
   THEME_META,
@@ -103,67 +103,6 @@ function CanvasName({
         </span>
       )}
     </button>
-  );
-}
-
-// ─── New canvas input ─────────────────────────────────────────────────────────
-
-function NewCanvasRow({ onCreate }: { onCreate: (name: string) => void }) {
-  const [open, setOpen] = useState(false);
-  const [val, setVal] = useState("");
-  const inputRef = useRef<HTMLInputElement>(null);
-
-  const commit = () => {
-    const t = val.trim();
-    if (t) onCreate(t);
-    setVal("");
-    setOpen(false);
-  };
-
-  if (!open) {
-    return (
-      <button
-        onClick={() => { setOpen(true); setTimeout(() => inputRef.current?.focus(), 0); }}
-        className="flex items-center gap-2 w-full hover:bg-[#F7FAF2] transition-colors rounded-md"
-        style={{ padding: "8px 14px", fontSize: 12, color: "#90AB8B" }}
-      >
-        <Plus size={13} />
-        New canvas
-      </button>
-    );
-  }
-
-  return (
-    <div className="flex items-center gap-1.5" style={{ padding: "6px 10px" }}>
-      <input
-        ref={inputRef}
-        value={val}
-        onChange={(e) => setVal(e.target.value)}
-        onKeyDown={(e) => {
-          if (e.key === "Enter") commit();
-          if (e.key === "Escape") { setVal(""); setOpen(false); }
-        }}
-        placeholder="Canvas name…"
-        style={{
-          flex: 1,
-          background: "#F7FAF2",
-          border: "1px solid #EBF4DD",
-          borderRadius: 6,
-          padding: "4px 8px",
-          fontSize: 12,
-          color: "#3B4953",
-          outline: "none",
-          fontFamily: "var(--font-dm-sans), sans-serif",
-        }}
-      />
-      <button
-        onClick={commit}
-        disabled={val.trim().length === 0}
-        style={{ color: "#547863", display: "flex", opacity: val.trim().length === 0 ? 0.4 : 1 }}
-      >
-        <Check size={14} />
-      </button>
-    </div>
   );
 }
 
@@ -358,16 +297,32 @@ export function Sidebar({
     >
       {/* Header */}
       <div
-        style={{
-          padding: "18px 16px 10px",
-          fontSize: 10,
-          fontWeight: 600,
-          color: "#90AB8B",
-          letterSpacing: 1.4,
-          textTransform: "uppercase",
-        }}
+        className="flex items-center justify-between"
+        style={{ padding: "18px 16px 10px" }}
       >
-        Canvases
+        <span
+          style={{
+            fontSize: 10,
+            fontWeight: 600,
+            color: "#90AB8B",
+            letterSpacing: 1.4,
+            textTransform: "uppercase",
+          }}
+        >
+          Canvases
+        </span>
+        <button
+          onClick={() => {
+            const userCount = canvases.filter((c) => !c.readOnly).length;
+            onCreateCanvas(userCount === 0 ? "Untitled" : `Untitled ${userCount + 1}`);
+          }}
+          className="hover:bg-[#EBF4DD] transition-colors rounded"
+          style={{ padding: 4, color: "#547863", display: "flex", alignItems: "center" }}
+          aria-label="New canvas"
+          title="New canvas"
+        >
+          <Plus size={14} />
+        </button>
       </div>
 
       {/* Canvas list */}
@@ -486,9 +441,6 @@ export function Sidebar({
             </div>
           );
         })}
-
-        {/* New canvas */}
-        <NewCanvasRow onCreate={onCreateCanvas} />
       </div>
     </div>
   );

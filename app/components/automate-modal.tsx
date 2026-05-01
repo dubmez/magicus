@@ -1,10 +1,79 @@
 "use client";
 
-import { useState } from "react";
-import { X, Zap, ChevronDown, Loader2 } from "lucide-react";
+import { useRef, useState } from "react";
+import { X, Zap, ChevronDown, Loader2, Copy, Check } from "lucide-react";
+import ReactMarkdown from "react-markdown";
+import type { Components } from "react-markdown";
 import type { Workflow, Connection } from "@/lib/workflows";
 
 type PlatformState = "idle" | "loading" | "done" | "error";
+type ViewMode = "read" | "markdown";
+
+const dmSerif = { fontFamily: "var(--font-dm-serif), serif", fontStyle: "italic" as const };
+
+const mdComponents: Components = {
+  h1: ({ children }) => (
+    <h1 style={{ ...dmSerif, fontSize: 20, color: "#3B4953", marginTop: 8, marginBottom: 12, lineHeight: 1.25 }}>
+      {children}
+    </h1>
+  ),
+  h2: ({ children }) => (
+    <h2 style={{ ...dmSerif, fontSize: 16, color: "#3B4953", marginTop: 18, marginBottom: 8, lineHeight: 1.3 }}>
+      {children}
+    </h2>
+  ),
+  h3: ({ children }) => (
+    <h3
+      style={{
+        fontSize: 11,
+        fontWeight: 600,
+        color: "#547863",
+        marginTop: 14,
+        marginBottom: 6,
+        textTransform: "uppercase",
+        letterSpacing: 0.8,
+      }}
+    >
+      {children}
+    </h3>
+  ),
+  p: ({ children }) => (
+    <p style={{ fontSize: 13, color: "#3B4953", lineHeight: 1.6, marginBottom: 10 }}>{children}</p>
+  ),
+  ul: ({ children }) => (
+    <ul style={{ paddingLeft: 18, marginBottom: 10, listStyleType: "disc" }}>{children}</ul>
+  ),
+  ol: ({ children }) => (
+    <ol style={{ paddingLeft: 22, marginBottom: 10, listStyleType: "decimal" }}>{children}</ol>
+  ),
+  li: ({ children }) => (
+    <li style={{ fontSize: 13, color: "#3B4953", lineHeight: 1.6, marginBottom: 4 }}>{children}</li>
+  ),
+  strong: ({ children }) => (
+    <strong style={{ color: "#3B4953", fontWeight: 600 }}>{children}</strong>
+  ),
+  em: ({ children }) => <em style={{ color: "#547863" }}>{children}</em>,
+  code: ({ children }) => (
+    <code
+      style={{
+        background: "#EBF4DD",
+        padding: "1px 6px",
+        borderRadius: 4,
+        fontSize: 12,
+        fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
+        color: "#3B4953",
+      }}
+    >
+      {children}
+    </code>
+  ),
+  hr: () => <hr style={{ border: "none", borderTop: "1px solid #EBF4DD", margin: "16px 0" }} />,
+  a: ({ children, href }) => (
+    <a href={href} target="_blank" rel="noreferrer" style={{ color: "#547863", textDecoration: "underline" }}>
+      {children}
+    </a>
+  ),
+};
 
 function PlatformSection({
   label,
@@ -22,6 +91,10 @@ function PlatformSection({
   const [open, setOpen] = useState(false);
   const [state, setState] = useState<PlatformState>("idle");
   const [instructions, setInstructions] = useState("");
+  const [mode, setMode] = useState<ViewMode>("read");
+  const [copied, setCopied] = useState(false);
+  const readRef = useRef<HTMLDivElement>(null);
+  const copyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const toggle = async () => {
     if (open) { setOpen(false); return; }
@@ -43,8 +116,23 @@ function PlatformSection({
     }
   };
 
+  const handleCopy = async () => {
+    const text =
+      mode === "markdown"
+        ? instructions
+        : (readRef.current?.innerText ?? instructions);
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopied(true);
+      if (copyTimerRef.current) clearTimeout(copyTimerRef.current);
+      copyTimerRef.current = setTimeout(() => setCopied(false), 1500);
+    } catch {
+      // Clipboard refused — fall through silently
+    }
+  };
+
   return (
-    <div style={{ border: "1px solid #EBF4DD", borderRadius: 12, overflow: "hidden" }}>
+    <div style={{ border: "1px solid #EBF4DD", borderRadius: 12, overflow: "hidden", flexShrink: 0 }}>
       <button
         onClick={toggle}
         className="w-full flex items-center justify-between transition-colors hover:bg-[#FBFDF7]"
@@ -55,7 +143,9 @@ function PlatformSection({
           <span style={{ fontSize: 14, fontWeight: 500, color: "#3B4953" }}>{label}</span>
         </div>
         <div className="flex items-center gap-2">
-          {state === "loading" && <Loader2 size={14} className="animate-spin" style={{ color: "#547863" }} />}
+          {state === "loading" && (
+            <Loader2 size={14} className="animate-spin" style={{ color: "#547863" }} />
+          )}
           <ChevronDown
             size={16}
             style={{
@@ -68,32 +158,110 @@ function PlatformSection({
       </button>
 
       {open && (
-        <div style={{ borderTop: "1px solid #EBF4DD", background: "#F7FAF2", padding: "18px 20px" }}>
+        <div style={{ borderTop: "1px solid #EBF4DD", background: "#F7FAF2" }}>
           {state === "loading" && (
-            <div className="flex items-center gap-2" style={{ color: "#547863", fontSize: 13 }}>
+            <div
+              className="flex items-center gap-2"
+              style={{ padding: "18px 20px", color: "#547863", fontSize: 13 }}
+            >
               <Loader2 size={14} className="animate-spin" />
               Generating {label} instructions…
             </div>
           )}
           {state === "error" && (
-            <div style={{ color: "#C0392B", fontSize: 13 }}>
+            <div style={{ padding: "18px 20px", color: "#C0392B", fontSize: 13 }}>
               Something went wrong. Check your API key and try again.
             </div>
           )}
           {state === "done" && (
-            <pre
-              style={{
-                fontFamily: "var(--font-dm-sans), sans-serif",
-                fontSize: 13,
-                color: "#3B4953",
-                whiteSpace: "pre-wrap",
-                wordBreak: "break-word",
-                margin: 0,
-                lineHeight: 1.6,
-              }}
-            >
-              {instructions}
-            </pre>
+            <>
+              {/* Toggle + Copy row */}
+              <div
+                className="flex items-center justify-between"
+                style={{
+                  padding: "10px 14px",
+                  borderBottom: "1px solid #EBF4DD",
+                }}
+              >
+                <div
+                  className="flex"
+                  style={{
+                    background: "#FFFFFF",
+                    border: "1px solid #EBF4DD",
+                    borderRadius: 999,
+                    padding: 3,
+                  }}
+                >
+                  {(["read", "markdown"] as const).map((m) => {
+                    const active = mode === m;
+                    return (
+                      <button
+                        key={m}
+                        onClick={() => setMode(m)}
+                        style={{
+                          padding: "4px 12px",
+                          borderRadius: 999,
+                          fontSize: 11,
+                          fontWeight: active ? 500 : 400,
+                          background: active ? "#3B4953" : "transparent",
+                          color: active ? "#EBF4DD" : "#547863",
+                          textTransform: "capitalize",
+                          transition: "background 0.12s, color 0.12s",
+                        }}
+                      >
+                        {m}
+                      </button>
+                    );
+                  })}
+                </div>
+                <button
+                  onClick={handleCopy}
+                  className="flex items-center gap-1.5 transition-colors hover:bg-[#EBF4DD]"
+                  style={{
+                    padding: "5px 10px",
+                    borderRadius: 999,
+                    fontSize: 11,
+                    color: copied ? "#547863" : "#547863",
+                    background: copied ? "#EBF4DD" : "transparent",
+                    fontWeight: 500,
+                  }}
+                  aria-label="Copy"
+                >
+                  {copied ? <Check size={12} /> : <Copy size={12} />}
+                  {copied ? "Copied" : "Copy"}
+                </button>
+              </div>
+
+              {/* Content */}
+              <div style={{ padding: "16px 20px" }}>
+                {mode === "read" ? (
+                  <div ref={readRef}>
+                    <ReactMarkdown components={mdComponents}>
+                      {instructions}
+                    </ReactMarkdown>
+                  </div>
+                ) : (
+                  <pre
+                    style={{
+                      background: "#FFFFFF",
+                      border: "1px solid #EBF4DD",
+                      borderRadius: 8,
+                      padding: "12px 14px",
+                      fontSize: 12,
+                      lineHeight: 1.55,
+                      color: "#3B4953",
+                      whiteSpace: "pre-wrap",
+                      wordBreak: "break-word",
+                      margin: 0,
+                      fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
+                      overflowX: "auto",
+                    }}
+                  >
+                    {instructions}
+                  </pre>
+                )}
+              </div>
+            </>
           )}
         </div>
       )}
@@ -179,7 +347,7 @@ export function AutomateModal({
           background: "#FFFFFF",
           borderRadius: 16,
           width: "min(680px, 100%)",
-          maxHeight: "85vh",
+          maxHeight: "80vh",
           display: "flex",
           flexDirection: "column",
           overflow: "hidden",
@@ -187,18 +355,17 @@ export function AutomateModal({
           boxShadow: "0px 12px 48px rgba(59, 73, 83, 0.16)",
         }}
       >
-        {/* Header */}
+        {/* Header (pinned) */}
         <div
           className="flex items-center justify-between"
-          style={{ padding: "16px 20px", borderBottom: "1px solid #EBF4DD" }}
+          style={{ padding: "16px 20px", borderBottom: "1px solid #EBF4DD", flexShrink: 0 }}
         >
           <div>
             <div className="flex items-center gap-2">
               <Zap size={15} style={{ color: "#547863" }} fill="#547863" />
               <div
                 style={{
-                  fontFamily: "var(--font-dm-serif), serif",
-                  fontStyle: "italic",
+                  ...dmSerif,
                   fontSize: 18,
                   color: "#3B4953",
                 }}
@@ -220,8 +387,11 @@ export function AutomateModal({
           </button>
         </div>
 
-        {/* Body */}
-        <div className="flex-1 overflow-y-auto" style={{ padding: 20, display: "flex", flexDirection: "column", gap: 10 }}>
+        {/* Scrollable body */}
+        <div
+          className="flex-1 overflow-y-auto"
+          style={{ padding: 20, display: "flex", flexDirection: "column", gap: 10, minHeight: 0 }}
+        >
           <PlatformSection
             key="zapier"
             label="Zapier"

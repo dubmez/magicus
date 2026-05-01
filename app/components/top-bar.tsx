@@ -1,19 +1,13 @@
 "use client";
 
-import { Download, LayoutGrid, Library, Plus, Zap } from "lucide-react";
-
-export type View = "canvas" | "library";
+import { Download, Plus, Zap } from "lucide-react";
 
 export function TopBar({
-  view,
-  onView,
   onExport,
   onNew,
   onAutomate,
   automateCount,
 }: {
-  view: View;
-  onView: (v: View) => void;
   onExport: () => void;
   onNew: () => void;
   onAutomate: () => void;
@@ -59,42 +53,6 @@ export function TopBar({
         >
           magicus
         </div>
-      </div>
-
-      <div
-        className="flex"
-        style={{
-          background: "#F7FAF2",
-          padding: 4,
-          borderRadius: 999,
-          border: "1px solid #EBF4DD",
-        }}
-      >
-        {([
-          { key: "canvas", label: "Canvas", icon: LayoutGrid },
-          { key: "library", label: "Library", icon: Library },
-        ] as const).map(({ key, label, icon: Icon }) => {
-          const active = view === key;
-          return (
-            <button
-              key={key}
-              onClick={() => onView(key)}
-              className="flex items-center gap-2 transition-all"
-              style={{
-                padding: "6px 14px",
-                borderRadius: 999,
-                background: active ? "#FFFFFF" : "transparent",
-                color: active ? "#3B4953" : "#547863",
-                fontSize: 13,
-                fontWeight: active ? 500 : 400,
-                border: active ? "1px solid #EBF4DD" : "1px solid transparent",
-              }}
-            >
-              <Icon size={14} />
-              {label}
-            </button>
-          );
-        })}
       </div>
 
       <div className="flex items-center gap-2">
