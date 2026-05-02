@@ -1,7 +1,15 @@
 import Anthropic from "@anthropic-ai/sdk";
+import { GoogleGenAI, Type } from "@google/genai";
 import { type NextRequest, NextResponse } from "next/server";
 
-const client = new Anthropic();
+// Provider dispatch — same pattern as /api/automate. Gemini 2.5 Flash is
+// substantially cheaper for this template-shaped output. Set
+// MAGICUS_GENERATE_PROVIDER=anthropic to flip back without a code change.
+type Provider = "gemini" | "anthropic";
+function pickProvider(): Provider {
+  const v = (process.env.MAGICUS_GENERATE_PROVIDER ?? "gemini").toLowerCase();
+  return v === "anthropic" ? "anthropic" : "gemini";
+}
 
 const SYSTEM = `You convert a user's rough description of a business workflow into a structured workflow card (or chain of cards if appropriate).
 
@@ -26,7 +34,7 @@ Rules:
    - "needs_standardisation" — too variable across runs to automate reliably without further process work
    Be honest. Most workflows have a mix. If unsure between automate and human_review, prefer human_review.
 
-Use the generate_workflows tool to return your output. Do not include any prose outside the tool call.`;
+Return the structured workflow object. Do not include prose outside the structured response.`;
 
 type GeneratedTrigger =
   | { type: "schedule" | "event" | "manual" | "chained"; description?: string }
@@ -60,12 +68,13 @@ type GeneratedWorkflow = {
 
 type GeneratedConnection = { from: string; to: string; label?: string };
 
-type ToolInput = {
+type GenerateResponse = {
   workflows: GeneratedWorkflow[];
   connections: GeneratedConnection[];
 };
 
-const tool = {
+// ─── Anthropic schema (tool input) ─────────────────────────────────────────
+const anthropicTool = {
   name: "generate_workflows",
   description:
     "Output one or more structured workflow cards (and connections between them, if a chain) based on the user's description.",
@@ -78,45 +87,23 @@ const tool = {
         items: {
           type: "object",
           properties: {
-            id: {
-              type: "string",
-              description: "Short local identifier used to reference this workflow in connections (e.g. 'a', 'b', 'c').",
-            },
-            theme: {
-              type: "string",
-              enum: ["sales", "marketing", "operations", "finance"],
-            },
-            name: {
-              type: "string",
-              description: "A short, specific name (under 60 chars) drawn from the user's description.",
-            },
+            id: { type: "string", description: "Short local id (e.g. 'a', 'b')." },
+            theme: { type: "string", enum: ["sales", "marketing", "operations", "finance"] },
+            name: { type: "string", description: "Short, specific name (under 60 chars)." },
             trigger: {
               type: ["object", "null"],
-              description: "What kicks the workflow off. Null if the user did not mention a trigger.",
               properties: {
-                type: {
-                  type: "string",
-                  enum: ["schedule", "event", "manual", "chained"],
-                },
-                description: {
-                  type: "string",
-                  description: "Verbatim from the user when possible. Omit for type=chained.",
-                },
+                type: { type: "string", enum: ["schedule", "event", "manual", "chained"] },
+                description: { type: "string" },
               },
               required: ["type"],
             },
-            why: {
-              type: "string",
-              description: "Why the workflow exists. Drawn from the user's description; empty string if they didn't say.",
-            },
+            why: { type: "string" },
             inputs: {
               type: "array",
               items: {
                 type: "object",
-                properties: {
-                  name: { type: "string" },
-                  source: { type: "string" },
-                },
+                properties: { name: { type: "string" }, source: { type: "string" } },
                 required: ["name", "source"],
               },
             },
@@ -126,14 +113,12 @@ const tool = {
                 type: "object",
                 properties: {
                   n: { type: "number" },
-                  text: { type: "string", description: "Verbatim from the user when possible." },
-                  note: { type: "string", description: "Conditional or branching detail (e.g. 'If discount > 15%, escalate'). Omit when absent." },
-                  owner: { type: "string", description: "Person or team responsible. Omit if the user didn't say." },
+                  text: { type: "string" },
+                  note: { type: "string" },
+                  owner: { type: "string" },
                   classification: {
                     type: "string",
                     enum: ["automate", "human_review", "security_risk", "needs_standardisation"],
-                    description:
-                      "How appropriate this step is for an autonomous agent. See the system prompt for definitions.",
                   },
                 },
                 required: ["n", "text", "classification"],
@@ -143,49 +128,28 @@ const tool = {
               type: "array",
               items: {
                 type: "object",
-                properties: {
-                  name: { type: "string" },
-                  source: { type: "string" },
-                },
+                properties: { name: { type: "string" }, source: { type: "string" } },
                 required: ["name", "source"],
               },
             },
-            tools: {
-              type: "array",
-              description: "Specific tools the user mentioned. Empty array is fine if they didn't name any.",
-              items: { type: "string" },
-            },
-            automationScore: {
-              type: "number",
-              minimum: 0,
-              maximum: 100,
-            },
+            tools: { type: "array", items: { type: "string" } },
+            automationScore: { type: "number", minimum: 0, maximum: 100 },
             automationRationale: { type: "string" },
           },
           required: [
-            "id",
-            "theme",
-            "name",
-            "trigger",
-            "why",
-            "inputs",
-            "steps",
-            "outputs",
-            "tools",
-            "automationScore",
-            "automationRationale",
+            "id", "theme", "name", "trigger", "why", "inputs",
+            "steps", "outputs", "tools", "automationScore", "automationRationale",
           ],
         },
       },
       connections: {
         type: "array",
-        description: "Edges between workflow ids. Empty when there is only one workflow.",
         items: {
           type: "object",
           properties: {
             from: { type: "string" },
             to: { type: "string" },
-            label: { type: "string", description: "Short handoff label, e.g. 'Lead qualified'." },
+            label: { type: "string" },
           },
           required: ["from", "to"],
         },
@@ -195,6 +159,140 @@ const tool = {
   },
 };
 
+// ─── Gemini schema (responseSchema) — same shape, Gemini's Type enum ───────
+const geminiSchema = {
+  type: Type.OBJECT,
+  properties: {
+    workflows: {
+      type: Type.ARRAY,
+      items: {
+        type: Type.OBJECT,
+        properties: {
+          id: { type: Type.STRING },
+          theme: {
+            type: Type.STRING,
+            enum: ["sales", "marketing", "operations", "finance"],
+          },
+          name: { type: Type.STRING },
+          trigger: {
+            type: Type.OBJECT,
+            nullable: true,
+            properties: {
+              type: {
+                type: Type.STRING,
+                enum: ["schedule", "event", "manual", "chained"],
+              },
+              description: { type: Type.STRING, nullable: true },
+            },
+            required: ["type"],
+          },
+          why: { type: Type.STRING },
+          inputs: {
+            type: Type.ARRAY,
+            items: {
+              type: Type.OBJECT,
+              properties: {
+                name: { type: Type.STRING },
+                source: { type: Type.STRING },
+              },
+              required: ["name", "source"],
+            },
+          },
+          steps: {
+            type: Type.ARRAY,
+            items: {
+              type: Type.OBJECT,
+              properties: {
+                n: { type: Type.INTEGER },
+                text: { type: Type.STRING },
+                note: { type: Type.STRING, nullable: true },
+                owner: { type: Type.STRING, nullable: true },
+                classification: {
+                  type: Type.STRING,
+                  enum: ["automate", "human_review", "security_risk", "needs_standardisation"],
+                },
+              },
+              required: ["n", "text", "classification"],
+            },
+          },
+          outputs: {
+            type: Type.ARRAY,
+            items: {
+              type: Type.OBJECT,
+              properties: {
+                name: { type: Type.STRING },
+                source: { type: Type.STRING },
+              },
+              required: ["name", "source"],
+            },
+          },
+          tools: { type: Type.ARRAY, items: { type: Type.STRING } },
+          automationScore: { type: Type.INTEGER },
+          automationRationale: { type: Type.STRING },
+        },
+        required: [
+          "id", "theme", "name", "trigger", "why", "inputs",
+          "steps", "outputs", "tools", "automationScore", "automationRationale",
+        ],
+      },
+    },
+    connections: {
+      type: Type.ARRAY,
+      items: {
+        type: Type.OBJECT,
+        properties: {
+          from: { type: Type.STRING },
+          to: { type: Type.STRING },
+          label: { type: Type.STRING, nullable: true },
+        },
+        required: ["from", "to"],
+      },
+    },
+  },
+  required: ["workflows", "connections"],
+};
+
+async function generateWithAnthropic(description: string): Promise<GenerateResponse | null> {
+  const client = new Anthropic();
+  const response = await client.messages.create({
+    model: "claude-sonnet-4-6",
+    max_tokens: 2000,
+    system: [{ type: "text", text: SYSTEM, cache_control: { type: "ephemeral" } }],
+    tools: [anthropicTool],
+    tool_choice: { type: "tool", name: "generate_workflows" },
+    messages: [
+      { role: "user", content: `User description:\n\n"""${description.trim()}"""` },
+    ],
+  });
+  const toolUse = response.content.find((b) => b.type === "tool_use");
+  if (!toolUse || toolUse.type !== "tool_use") return null;
+  return toolUse.input as GenerateResponse;
+}
+
+async function generateWithGemini(description: string): Promise<GenerateResponse | null> {
+  const apiKey = process.env.GEMINI_API_KEY;
+  if (!apiKey) throw new Error("GEMINI_API_KEY is not set");
+  const client = new GoogleGenAI({ apiKey });
+  const response = await client.models.generateContent({
+    model: "gemini-2.5-flash",
+    config: {
+      systemInstruction: SYSTEM,
+      responseMimeType: "application/json",
+      responseSchema: geminiSchema,
+      maxOutputTokens: 4000,
+    },
+    contents: `User description:\n\n"""${description.trim()}"""`,
+  });
+  const text = response.text;
+  if (!text) return null;
+  try {
+    return JSON.parse(text) as GenerateResponse;
+  } catch (err) {
+    console.error("[generate/gemini] JSON parse failed", err, text.slice(0, 400));
+    return null;
+  }
+}
+
 export async function POST(req: NextRequest) {
   try {
     const { description } = (await req.json()) as { description: string };
@@ -202,26 +300,19 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Empty description" }, { status: 400 });
     }
 
-    const response = await client.messages.create({
-      model: "claude-sonnet-4-6",
-      max_tokens: 2000,
-      system: [{ type: "text", text: SYSTEM, cache_control: { type: "ephemeral" } }],
-      tools: [tool],
-      tool_choice: { type: "tool", name: "generate_workflows" },
-      messages: [
-        {
-          role: "user",
-          content: `User description:\n\n"""${description.trim()}"""`,
-        },
-      ],
-    });
+    const provider = pickProvider();
+    const data =
+      provider === "gemini"
+        ? await generateWithGemini(description)
+        : await generateWithAnthropic(description);
 
-    const toolUse = response.content.find((b) => b.type === "tool_use");
-    if (!toolUse || toolUse.type !== "tool_use") {
-      return NextResponse.json({ error: "Model did not return a tool call" }, { status: 502 });
+    if (!data || !Array.isArray(data.workflows) || data.workflows.length === 0) {
+      return NextResponse.json(
+        { error: "Model returned no usable workflows" },
+        { status: 502 }
+      );
     }
 
-    const data = toolUse.input as ToolInput;
     return NextResponse.json(data);
   } catch (err) {
     console.error("[generate]", err);
