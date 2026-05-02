@@ -188,7 +188,7 @@ function HeroSection({
             padding: "8px 12px",
           }}
         >
-          Or browse community workflows
+          Or browse example workflows
           <ArrowRight size={13} />
         </button>
       </div>

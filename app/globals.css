@@ -74,7 +74,9 @@ body {
    Each new line fades in over the first ~700ms then sits visible until the
    parent component swaps it out. */
 @keyframes magicus-placeholder-fade {
-  0%   { opacity: 0; transform: translateY(2px); }
+  /* Start at a low-but-visible opacity so a screenshot caught right at the
+     cycle boundary still shows something — pure 0% caused a flicker frame. */
+  0%   { opacity: 0.4; transform: translateY(2px); }
   18%  { opacity: 1; transform: translateY(0); }
   100% { opacity: 1; transform: translateY(0); }
 }

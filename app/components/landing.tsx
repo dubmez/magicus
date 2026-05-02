@@ -318,7 +318,19 @@ export function Landing({
                 <>
                   <span style={{ color: "#EBF4DD" }}>·</span>
                   <button
-                    onClick={onRecord}
+                    onClick={() => {
+                      // Preserve typed text — confirm before discarding so a
+                      // long description isn't lost to a stray click.
+                      if (
+                        text.trim().length > 0 &&
+                        !window.confirm(
+                          "Discard your description and switch to screen recording?"
+                        )
+                      ) {
+                        return;
+                      }
+                      onRecord();
+                    }}
                     className="hover:underline"
                     style={{
                       background: "transparent",

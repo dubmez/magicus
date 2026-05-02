@@ -560,6 +560,48 @@ export function Canvas({
         </button>
       </div>
 
+      {/* Multi-select chip — surfaces what's currently selected so users
+          aren't guessing how many cards Shift-click has accumulated. */}
+      {selectedIds.size > 0 && (
+        <div
+          className="absolute flex items-center gap-2"
+          style={{
+            bottom: 56,
+            left: 24,
+            background: "#3B4953",
+            color: "#EBF4DD",
+            padding: "6px 12px",
+            borderRadius: 999,
+            fontSize: 12,
+            fontWeight: 500,
+            boxShadow: "0 4px 16px rgba(59, 73, 83, 0.18)",
+            zIndex: 30,
+          }}
+        >
+          <span>
+            {selectedIds.size} selected
+            <span style={{ color: "rgba(235, 244, 221, 0.55)" }}>
+              {" · Shift-click to add · "}
+            </span>
+            <button
+              onClick={() => onSelect(null)}
+              className="hover:underline"
+              style={{
+                background: "transparent",
+                border: "none",
+                color: "#EBF4DD",
+                padding: 0,
+                cursor: "pointer",
+                fontSize: 12,
+                fontWeight: 500,
+              }}
+            >
+              Clear
+            </button>
+          </span>
+        </div>
+      )}
+
       {/* Hint — fades after the first pan or zoom */}
       <div
         className="absolute bottom-6 left-6"

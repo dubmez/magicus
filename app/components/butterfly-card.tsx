@@ -147,23 +147,32 @@ export function ButterflyCard({
         </>
       )}
 
-      {showAutomatable && (
+      {effectiveScore > 0 && (
+        // Continuous score pill — no threshold cliff. Sage when ≥70 (the
+        // workflow is mostly automatable), muted neutral below so users see
+        // the gradient as they classify rather than a binary jump.
         <div
           className="absolute z-20 flex items-center gap-1"
           style={{
             top: 0,
             right: 0,
-            background: "#547863",
-            color: "#EBF4DD",
+            background: showAutomatable ? "#547863" : "#FFFFFF",
+            color: showAutomatable ? "#EBF4DD" : "#547863",
+            border: showAutomatable ? "none" : "1px solid #EBF4DD",
             fontSize: compact ? 9 : 10,
             fontWeight: 500,
             padding: compact ? "3px 8px" : "5px 10px",
             borderRadius: 999,
             letterSpacing: 0.3,
+            fontVariantNumeric: "tabular-nums",
           }}
         >
-          <Zap size={compact ? 10 : 12} fill="#EBF4DD" strokeWidth={0} />
-          Automatable
+          <Zap
+            size={compact ? 10 : 12}
+            fill={showAutomatable ? "#EBF4DD" : "#547863"}
+            strokeWidth={0}
+          />
+          {effectiveScore}%
         </div>
       )}
 

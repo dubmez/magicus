@@ -449,7 +449,7 @@ export function Sidebar({
                         lineHeight: 1.45,
                       }}
                     >
-                      Use “New workflow” in the toolbar to map your first workflow.
+                      No workflows here yet — use the toolbar above to map one.
                     </div>
                   )}
                 </div>

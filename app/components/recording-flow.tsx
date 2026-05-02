@@ -8,6 +8,7 @@ import {
   AlertCircle,
   ArrowRight,
   Sparkles,
+  X,
 } from "lucide-react";
 import { AnimatedButterfly } from "./animated-butterfly";
 
@@ -430,7 +431,7 @@ function PrepScreen({
       }}
     >
       <header
-        className="flex items-center"
+        className="flex items-center justify-between"
         style={{ padding: "24px 32px" }}
       >
         <div className="flex items-center gap-3">
@@ -454,6 +455,17 @@ function PrepScreen({
             magicus
           </div>
         </div>
+        {/* Explicit close so users who change their mind don't have to read
+            'Describe instead' as 'cancel'. */}
+        <button
+          onClick={onCancel}
+          className="hover:bg-[#EBF4DD] rounded-md p-2 transition-colors"
+          style={{ color: "#547863" }}
+          aria-label="Close"
+          title="Back to canvas"
+        >
+          <X size={18} />
+        </button>
       </header>
 
       <section className="flex-1 flex items-center justify-center" style={{ padding: "32px 24px 80px" }}>

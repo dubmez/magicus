@@ -302,33 +302,23 @@ function ScoreBadge({ score }: { score: number }) {
 }
 
 function ThemeBadge({ theme }: { theme: Theme }) {
+  // Compact form: dot only, theme name available on hover. Saves horizontal
+  // space in the header so the score badge doesn't squeeze the title.
   const meta = THEME_META[theme];
   return (
-    <div
-      className="flex items-center gap-1.5"
+    <span
+      title={meta.label}
+      aria-label={`Theme: ${meta.label}`}
       style={{
-        background: "#F7FAF2",
-        border: "1px solid #EBF4DD",
-        padding: "3px 9px",
+        width: 12,
+        height: 12,
         borderRadius: 999,
-        fontSize: 11,
-        color: "#547863",
-        fontWeight: 500,
-        textTransform: "uppercase",
-        letterSpacing: 0.6,
+        background: meta.dot,
+        flexShrink: 0,
+        border: "2px solid #FFFFFF",
+        boxShadow: `0 0 0 1px ${meta.dot}33`,
       }}
-    >
-      <span
-        style={{
-          width: 7,
-          height: 7,
-          borderRadius: 999,
-          background: meta.dot,
-          flexShrink: 0,
-        }}
-      />
-      {meta.label}
-    </div>
+    />
   );
 }
 
@@ -359,7 +349,9 @@ function ReadinessBar({ score, rationale }: { score: number; rationale?: string 
           style={{
             height: "100%",
             width: `${score}%`,
-            background: "linear-gradient(90deg, #547863 0%, #C99461 100%)",
+            // Amber on the left (low scores show only amber); green on the
+            // right (high scores reveal more sage). Reads as 'good = green'.
+            background: "linear-gradient(90deg, #C99461 0%, #547863 100%)",
             transition: "width 600ms ease",
           }}
         />
@@ -974,6 +966,56 @@ export function DetailPanel({
               </div>
             </div>
 
+            {/* Read-only banners surface BEFORE the trigger/readiness so the
+                user knows the context before reading the metrics. */}
+            {readOnly && (
+              <div
+                style={{
+                  marginBottom: 12,
+                  padding: "6px 10px",
+                  fontSize: 11,
+                  color: "#90AB8B",
+                  background: "#FFFFFF",
+                  border: "1px solid #EBF4DD",
+                  borderRadius: 8,
+                  fontStyle: "italic",
+                }}
+              >
+                Read-only — workflows on the Examples canvas can&apos;t be edited.
+              </div>
+            )}
+            {unauthReadOnly && (
+              <div
+                className="flex items-center justify-between gap-3"
+                style={{
+                  marginBottom: 12,
+                  padding: "8px 10px",
+                  fontSize: 12,
+                  color: "#3B4953",
+                  background: "#FFFFFF",
+                  border: "1px solid #EBF4DD",
+                  borderRadius: 8,
+                }}
+              >
+                <span>Sign in to edit your workflows.</span>
+                <button
+                  onClick={() => openGate()}
+                  className="hover:opacity-90 transition-opacity"
+                  style={{
+                    background: "#3B4953",
+                    color: "#EBF4DD",
+                    padding: "4px 12px",
+                    borderRadius: 999,
+                    fontSize: 12,
+                    fontWeight: 500,
+                    flexShrink: 0,
+                  }}
+                >
+                  Sign in
+                </button>
+              </div>
+            )}
+
             {/* Trigger row */}
             <div style={{ marginBottom: 14 }}>
               <TriggerDisplay
@@ -987,53 +1029,6 @@ export function DetailPanel({
             {/* Readiness bar + rationale */}
             <ReadinessBar score={derivedScore} rationale={workflow.automationRationale} />
           </div>
-
-          {/* Read-only banners */}
-          {readOnly && (
-            <div
-              style={{
-                padding: "8px 24px",
-                fontSize: 11,
-                color: "#90AB8B",
-                background: "#F7FAF2",
-                borderBottom: "1px solid #EBF4DD",
-                fontStyle: "italic",
-                flexShrink: 0,
-              }}
-            >
-              Read-only — workflows on the Examples canvas can&apos;t be edited.
-            </div>
-          )}
-          {unauthReadOnly && (
-            <div
-              className="flex items-center justify-between gap-3"
-              style={{
-                padding: "10px 24px",
-                fontSize: 12,
-                color: "#3B4953",
-                background: "#F7FAF2",
-                borderBottom: "1px solid #EBF4DD",
-                flexShrink: 0,
-              }}
-            >
-              <span>Sign in to edit your workflows.</span>
-              <button
-                onClick={() => openGate()}
-                className="hover:opacity-90 transition-opacity"
-                style={{
-                  background: "#3B4953",
-                  color: "#EBF4DD",
-                  padding: "4px 12px",
-                  borderRadius: 999,
-                  fontSize: 12,
-                  fontWeight: 500,
-                  flexShrink: 0,
-                }}
-              >
-                Sign in
-              </button>
-            </div>
-          )}
 
           {/* SCROLLABLE BODY */}
           <fieldset
@@ -1290,7 +1285,7 @@ export function DetailPanel({
                 }}
               >
                 <Zap size={13} fill="#EBF4DD" strokeWidth={0} />
-                Automate it
+                Build automation
               </button>
             )}
             {!effectiveReadOnly && (
