@@ -1,225 +1,690 @@
 "use client";
 
-import { Mic, Zap, Link2, ArrowRight } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import {
+  Sparkles,
+  Mic,
+  Video,
+  ArrowRight,
+  Send,
+  Loader2,
+  AlertCircle,
+  AlertTriangle,
+  Link2,
+  Zap,
+} from "lucide-react";
 import { useAuth, useRequireAuth } from "@/lib/auth-context";
 import { AnimatedButterfly } from "./animated-butterfly";
 
 const dmSerif = { fontFamily: "var(--font-dm-serif), serif", fontStyle: "italic" as const };
 const dmSans = { fontFamily: "var(--font-dm-sans), sans-serif" };
 
-export function LandingHero({
-  onStartMapping,
+const PLACEHOLDERS = [
+  "When a new lead comes in, I check HubSpot, score them, and send a personalised email…",
+  "Every Monday I pull last week's metrics and post a summary to Slack…",
+  "When a client signs, I set up their Notion workspace and send the welcome sequence…",
+];
+
+// ─── Speech recognition (re-declared locally to avoid coupling to landing.tsx)
+type SpeechRecognitionResultLike = { isFinal: boolean; 0: { transcript: string } };
+type SpeechRecognitionEventLike = {
+  resultIndex: number;
+  results: ArrayLike<SpeechRecognitionResultLike>;
+};
+type SpeechRecognitionLike = {
+  continuous: boolean;
+  interimResults: boolean;
+  lang: string;
+  start: () => void;
+  stop: () => void;
+  abort: () => void;
+  onresult: ((e: SpeechRecognitionEventLike) => void) | null;
+  onend: (() => void) | null;
+  onerror: ((e: { error: string }) => void) | null;
+};
+type SpeechRecognitionCtor = new () => SpeechRecognitionLike;
+
+function getSpeechRecognition(): SpeechRecognitionCtor | null {
+  if (typeof window === "undefined") return null;
+  const w = window as unknown as {
+    SpeechRecognition?: SpeechRecognitionCtor;
+    webkitSpeechRecognition?: SpeechRecognitionCtor;
+  };
+  return w.SpeechRecognition ?? w.webkitSpeechRecognition ?? null;
+}
+
+// ─── Top bar ───────────────────────────────────────────────────────────────
+function HeroHeader() {
+  const { openGate } = useAuth();
+  return (
+    <header
+      className="flex items-center justify-between"
+      style={{ padding: "24px 32px", position: "relative", zIndex: 2 }}
+    >
+      <div className="flex items-center gap-3">
+        <div
+          style={{
+            width: 28,
+            height: 28,
+            borderRadius: 8,
+            background: "#3B4953",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            color: "#EBF4DD",
+            ...dmSerif,
+            fontSize: 16,
+          }}
+        >
+          m
+        </div>
+        <div style={{ ...dmSerif, fontSize: 22, color: "#3B4953", letterSpacing: -0.2 }}>
+          magicus
+        </div>
+      </div>
+      <button
+        onClick={() => openGate()}
+        className="hover:bg-[#EBF4DD] transition-colors"
+        style={{
+          background: "transparent",
+          color: "#3B4953",
+          padding: "6px 14px",
+          borderRadius: 999,
+          fontSize: 13,
+          fontWeight: 500,
+          border: "1px solid transparent",
+        }}
+      >
+        Sign in
+      </button>
+    </header>
+  );
+}
+
+// ─── Hero (eyebrow + headline + subhead + prompt + browse) ────────────────
+function HeroSection({
+  onMap,
   onBrowseExamples,
 }: {
-  onStartMapping: () => void;
+  onMap: (description: string) => Promise<void>;
   onBrowseExamples: () => void;
 }) {
-  const { user, openGate } = useAuth();
+  return (
+    <section
+      className="relative flex-1 flex items-center justify-center"
+      style={{
+        padding: "48px 24px 80px",
+        // Layered: dot grid texture on top, sage glow in middle, cream base.
+        // The dots persist across the gradient so the whole hero reads as one
+        // soft, considered surface — not a separate panel.
+        background: `
+          radial-gradient(rgba(144, 171, 139, 0.4) 1.2px, transparent 1.2px),
+          radial-gradient(ellipse 110% 80% at center 38%, rgba(44, 74, 62, 0.22) 0%, rgba(44, 74, 62, 0.08) 35%, rgba(247, 250, 242, 0) 65%),
+          #F7FAF2
+        `,
+        backgroundSize: "28px 28px, auto, auto",
+        backgroundPosition: "0 0, center, 0 0",
+        backgroundRepeat: "repeat, no-repeat, no-repeat",
+      }}
+    >
+      <div
+        className="w-full max-w-[760px] mx-auto flex flex-col items-center text-center"
+        style={{ position: "relative", zIndex: 1 }}
+      >
+        <div
+          style={{
+            color: "#547863",
+            fontSize: 12,
+            letterSpacing: "0.1em",
+            textTransform: "uppercase",
+            fontWeight: 500,
+            marginBottom: 20,
+          }}
+        >
+          Workflow intelligence for the AI era
+        </div>
+
+        <h1
+          className="text-[40px] md:text-[56px] lg:text-[64px]"
+          style={{
+            ...dmSerif,
+            color: "#3B4953",
+            lineHeight: 1.05,
+            letterSpacing: -1,
+            marginBottom: 20,
+            maxWidth: 720,
+          }}
+        >
+          Do it once. Skip it forever.
+        </h1>
+
+        <p
+          className="text-[16px] md:text-[18px]"
+          style={{
+            color: "#547863",
+            lineHeight: 1.55,
+            maxWidth: 520,
+            marginBottom: 36,
+          }}
+        >
+          You already know how your business works. Record yourself doing it
+          once — Magicus maps it, scores it, and builds you an automation
+          blueprint. You bring the magic.
+        </p>
+
+        <PromptBox onMap={onMap} />
+
+        <button
+          onClick={onBrowseExamples}
+          className="hover:underline flex items-center gap-1 mt-6"
+          style={{
+            background: "transparent",
+            color: "#90AB8B",
+            fontSize: 13,
+            fontWeight: 400,
+            border: "none",
+            padding: "8px 12px",
+          }}
+        >
+          Or browse community workflows
+          <ArrowRight size={13} />
+        </button>
+      </div>
+    </section>
+  );
+}
+
+// ─── Prompt box ────────────────────────────────────────────────────────────
+type Mode = "describe" | "voice" | "record";
+type Stage = "idle" | "generating";
+
+function PromptBox({ onMap }: { onMap: (description: string) => Promise<void> }) {
+  const [text, setText] = useState("");
+  const [mode, setMode] = useState<Mode>("describe");
+  const [stage, setStage] = useState<Stage>("idle");
+  const [phIdx, setPhIdx] = useState(0);
+  const [voiceSupported, setVoiceSupported] = useState(false);
+  const [isRecording, setIsRecording] = useState(false);
+  const [permissionDenied, setPermissionDenied] = useState(false);
+  const [submitError, setSubmitError] = useState<string | null>(null);
+  const [recordHover, setRecordHover] = useState(false);
+  const [interimTranscript, setInterimTranscript] = useState("");
+
+  const taRef = useRef<HTMLTextAreaElement>(null);
+  const recognitionRef = useRef<SpeechRecognitionLike | null>(null);
+  const baseTextRef = useRef("");
+  const denyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const guard = useRequireAuth();
+
+  // Detect voice support once on mount.
+  useEffect(() => {
+    setVoiceSupported(getSpeechRecognition() !== null);
+    return () => {
+      recognitionRef.current?.abort();
+      if (denyTimerRef.current) clearTimeout(denyTimerRef.current);
+    };
+  }, []);
+
+  // Cycle through example placeholders every 4s while the textarea is empty.
+  // We render the placeholder as an absolutely-positioned overlay so we can
+  // control the fade-in via a CSS keyframe (the native `placeholder` attribute
+  // can't be animated).
+  useEffect(() => {
+    if (text.length > 0) return;
+    const t = setInterval(() => {
+      setPhIdx((i) => (i + 1) % PLACEHOLDERS.length);
+    }, 4000);
+    return () => clearInterval(t);
+  }, [text.length]);
+
+  const stopRecording = () => {
+    recognitionRef.current?.stop();
+  };
+
+  const startRecording = () => {
+    const Ctor = getSpeechRecognition();
+    if (!Ctor) return;
+    const rec = new Ctor();
+    rec.continuous = true;
+    rec.interimResults = true;
+    rec.lang = "en-US";
+
+    baseTextRef.current = text.length > 0 && !text.endsWith(" ") ? text + " " : text;
+
+    rec.onresult = (e) => {
+      let interim = "";
+      let final = "";
+      for (let i = 0; i < e.results.length; i++) {
+        const r = e.results[i];
+        if (r.isFinal) final += r[0].transcript;
+        else interim += r[0].transcript;
+      }
+      // Live transcript shown in voice mode; final commits to the textarea.
+      setText(baseTextRef.current + final);
+      setInterimTranscript(interim);
+    };
+    rec.onend = () => {
+      setIsRecording(false);
+      setInterimTranscript("");
+      recognitionRef.current = null;
+    };
+    rec.onerror = (e) => {
+      if (e.error === "not-allowed" || e.error === "service-not-allowed") {
+        setPermissionDenied(true);
+        if (denyTimerRef.current) clearTimeout(denyTimerRef.current);
+        denyTimerRef.current = setTimeout(() => setPermissionDenied(false), 6000);
+      }
+      setIsRecording(false);
+      setInterimTranscript("");
+    };
+
+    recognitionRef.current = rec;
+    setPermissionDenied(false);
+    try {
+      rec.start();
+      setIsRecording(true);
+    } catch {
+      setIsRecording(false);
+      recognitionRef.current = null;
+    }
+  };
+
+  // Switch modes. Switching INTO voice triggers recording (gated by auth);
+  // switching OUT of voice (or back to describe) stops recording and surfaces
+  // the transcript in the textarea. Record is a stub for now.
+  const switchMode = (next: Mode) => {
+    if (next === mode) {
+      // Clicking the active mode toggles voice off if recording.
+      if (next === "voice" && isRecording) {
+        stopRecording();
+        setMode("describe");
+      }
+      return;
+    }
+    if (mode === "voice" && isRecording) stopRecording();
+
+    if (next === "record") {
+      // Stub — see tooltip on hover. Don't switch the mode; user stays put.
+      return;
+    }
+
+    setMode(next);
+    if (next === "voice") {
+      // Voice creates data, so it's gated. Authenticated users start recording
+      // immediately; unauthed users see the gate and recording starts after.
+      guard(() => startRecording());
+    }
+  };
+
+  const doSubmit = async () => {
+    if (stage !== "idle" || text.trim().length === 0) return;
+    if (isRecording) stopRecording();
+    setSubmitError(null);
+    setStage("generating");
+    try {
+      await onMap(text);
+    } catch {
+      setSubmitError("Couldn't generate a workflow — check your connection and try again.");
+      setStage("idle");
+    }
+  };
+
+  const submit = () => {
+    if (text.trim().length === 0) return;
+    // The closure captures the current `text`; if the user is unauthed the
+    // gate replays this exact callback after sign-in, so the typed text
+    // survives the round-trip.
+    guard(() => { void doSubmit(); });
+  };
+
+  const submitDisabled = text.trim().length === 0 || stage === "generating";
+  const showVoiceUI = mode === "voice";
 
   return (
     <div
-      className="min-h-screen w-full flex flex-col"
+      className="w-full"
       style={{
+        maxWidth: 680,
+        background: "#FFFFFF",
+        border: "1px solid #EBF4DD",
+        borderRadius: 20,
+        padding: "20px 24px",
+        boxShadow: "0 8px 40px rgba(59, 73, 83, 0.12)",
+        ...dmSans,
+      }}
+    >
+      {/* Input area — textarea OR voice waveform */}
+      <div style={{ position: "relative", minHeight: 96 }}>
+        {showVoiceUI ? (
+          <VoicePanel
+            isRecording={isRecording}
+            transcript={text + interimTranscript}
+          />
+        ) : (
+          <>
+            <textarea
+              ref={taRef}
+              value={text}
+              onChange={(e) => setText(e.target.value)}
+              disabled={stage !== "idle"}
+              rows={3}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) submit();
+              }}
+              style={{
+                width: "100%",
+                background: "transparent",
+                border: "none",
+                outline: "none",
+                resize: "none",
+                fontFamily: "inherit",
+                fontSize: 15,
+                lineHeight: 1.55,
+                color: "#3B4953",
+                minHeight: 84,
+              }}
+            />
+            {/* Cycling placeholder overlay — only when textarea is empty */}
+            {text.length === 0 && (
+              <div
+                key={phIdx}
+                aria-hidden
+                className="magicus-placeholder-fade"
+                style={{
+                  position: "absolute",
+                  top: 0,
+                  left: 0,
+                  right: 0,
+                  fontSize: 15,
+                  lineHeight: 1.55,
+                  color: "#90AB8B",
+                  pointerEvents: "none",
+                }}
+              >
+                {PLACEHOLDERS[phIdx]}
+              </div>
+            )}
+          </>
+        )}
+      </div>
+
+      {/* Permission / error rows */}
+      {permissionDenied && (
+        <div
+          role="alert"
+          className="flex items-start gap-2"
+          style={{
+            marginTop: 10,
+            padding: "8px 12px",
+            background: "#FEF3E2",
+            border: "1px solid #F5C28C",
+            borderRadius: 8,
+            fontSize: 12,
+            color: "#8A4B0F",
+            lineHeight: 1.4,
+          }}
+        >
+          <AlertTriangle size={14} style={{ flexShrink: 0, marginTop: 1 }} />
+          <span>
+            <strong style={{ fontWeight: 600 }}>Microphone access denied.</strong>{" "}
+            Enable microphone in your browser settings, then try again.
+          </span>
+        </div>
+      )}
+      {submitError && (
+        <div
+          role="alert"
+          className="flex items-start gap-2"
+          style={{
+            marginTop: 10,
+            padding: "8px 12px",
+            background: "#FDECEC",
+            border: "1px solid #E5A8A8",
+            borderRadius: 8,
+            fontSize: 12,
+            color: "#8B2A2A",
+            lineHeight: 1.4,
+          }}
+        >
+          <AlertCircle size={14} style={{ flexShrink: 0, marginTop: 1 }} />
+          <span>{submitError}</span>
+        </div>
+      )}
+
+      {/* Bottom row — modes left, submit right */}
+      <div
+        className="flex items-center justify-between gap-3"
+        style={{ marginTop: 14, paddingTop: 12, borderTop: "1px solid #EBF4DD" }}
+      >
+        <div className="flex items-center gap-2">
+          <ModePill
+            label="Describe"
+            icon={<Sparkles size={12} />}
+            active={mode === "describe"}
+            onClick={() => switchMode("describe")}
+          />
+          {voiceSupported && (
+            <ModePill
+              label="Voice"
+              icon={<Mic size={12} />}
+              active={mode === "voice"}
+              onClick={() => switchMode("voice")}
+            />
+          )}
+          {/* Record — stub with tooltip */}
+          <div
+            style={{ position: "relative" }}
+            onMouseEnter={() => setRecordHover(true)}
+            onMouseLeave={() => setRecordHover(false)}
+          >
+            <ModePill
+              label="Record"
+              icon={<Video size={12} />}
+              active={false}
+              onClick={() => switchMode("record")}
+            />
+            {recordHover && (
+              <div
+                role="tooltip"
+                style={{
+                  position: "absolute",
+                  bottom: "calc(100% + 6px)",
+                  left: "50%",
+                  transform: "translateX(-50%)",
+                  background: "#3B4953",
+                  color: "#EBF4DD",
+                  fontSize: 11,
+                  padding: "4px 8px",
+                  borderRadius: 6,
+                  whiteSpace: "nowrap",
+                  pointerEvents: "none",
+                  zIndex: 5,
+                }}
+              >
+                Screen recording coming soon
+              </div>
+            )}
+          </div>
+        </div>
+
+        <button
+          onClick={submit}
+          disabled={submitDisabled}
+          className="flex items-center gap-2 transition-opacity"
+          style={{
+            background: "#3B4953",
+            color: "#EBF4DD",
+            padding: "10px 18px",
+            borderRadius: 999,
+            fontSize: 13,
+            fontWeight: 500,
+            border: "none",
+            opacity: submitDisabled ? 0.4 : 1,
+            cursor: submitDisabled ? "not-allowed" : "pointer",
+          }}
+        >
+          {stage === "generating" ? (
+            <>
+              <Loader2 size={14} className="animate-spin" />
+              Mapping
+            </>
+          ) : (
+            <>
+              <Send size={14} />
+              Map it
+            </>
+          )}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function ModePill({
+  label,
+  icon,
+  active,
+  onClick,
+}: {
+  label: string;
+  icon: React.ReactNode;
+  active: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      className="flex items-center gap-1.5 transition-colors"
+      style={{
+        background: active ? "#3B4953" : "transparent",
+        color: active ? "#EBF4DD" : "#547863",
+        border: `1px solid ${active ? "#3B4953" : "#EBF4DD"}`,
+        padding: "5px 11px",
+        borderRadius: 999,
+        fontSize: 12,
+        fontWeight: 500,
+        cursor: "pointer",
+      }}
+    >
+      {icon}
+      {label}
+    </button>
+  );
+}
+
+function VoicePanel({
+  isRecording,
+  transcript,
+}: {
+  isRecording: boolean;
+  transcript: string;
+}) {
+  return (
+    <div
+      className="flex flex-col items-center justify-center"
+      style={{ minHeight: 96, gap: 10 }}
+    >
+      <div className="flex items-end gap-1.5" style={{ height: 32 }}>
+        {[0, 1, 2, 3, 4].map((i) => (
+          <span
+            key={i}
+            className="magicus-wave-bar"
+            style={{
+              animationDelay: `${i * 0.12}s`,
+              opacity: isRecording ? 1 : 0.35,
+              animationPlayState: isRecording ? "running" : "paused",
+            }}
+          />
+        ))}
+      </div>
+      <div style={{ fontSize: 13, color: "#547863", fontWeight: 500 }}>
+        {isRecording ? "Listening…" : "Voice mode"}
+      </div>
+      {transcript.trim().length > 0 && (
+        <div
+          style={{
+            fontSize: 13,
+            color: "#3B4953",
+            lineHeight: 1.5,
+            textAlign: "center",
+            maxWidth: 580,
+            marginTop: 4,
+          }}
+        >
+          {transcript}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── Below-the-fold sections ───────────────────────────────────────────────
+function ButterflySection() {
+  return (
+    <section
+      style={{
+        background: "#EBF4DD",
+        padding: "80px 32px 96px",
+        borderTop: "1px solid #DCE7CB",
+      }}
+    >
+      <div className="max-w-[1100px] mx-auto flex flex-col items-center text-center">
+        <h2
+          className="text-[28px] md:text-[34px]"
+          style={{ ...dmSerif, color: "#3B4953", marginBottom: 48, letterSpacing: -0.4 }}
+        >
+          Watch a workflow come to life
+        </h2>
+        <div style={{ transform: "scale(1.1)", transformOrigin: "center" }}>
+          <AnimatedButterfly />
+        </div>
+        <p
+          style={{
+            ...dmSans,
+            fontSize: 13,
+            color: "#547863",
+            marginTop: 56,
+            letterSpacing: 0.1,
+          }}
+        >
+          This is what Magicus generates from a 2-minute recording
+        </p>
+      </div>
+    </section>
+  );
+}
+
+function PillarsSection() {
+  return (
+    <section
+      style={{
+        padding: "80px 32px 32px",
         background: "#F7FAF2",
         backgroundImage:
           "radial-gradient(rgba(144, 171, 139, 0.4) 1.2px, transparent 1.2px)",
         backgroundSize: "28px 28px",
-        ...dmSans,
       }}
     >
-      {/* Top bar — logo left, sign-in right */}
-      <header
-        className="flex items-center justify-between"
-        style={{ padding: "28px 32px" }}
-      >
-        <div className="flex items-center gap-3">
-          <div
-            style={{
-              width: 28,
-              height: 28,
-              borderRadius: 8,
-              background: "#3B4953",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              color: "#EBF4DD",
-              ...dmSerif,
-              fontSize: 16,
-            }}
-          >
-            m
-          </div>
-          <div style={{ ...dmSerif, fontSize: 22, color: "#3B4953", letterSpacing: -0.2 }}>
-            magicus
-          </div>
+      <div className="max-w-[1100px] mx-auto">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-10 md:gap-12">
+          <Pillar
+            icon={<Mic size={20} style={{ color: "#547863" }} />}
+            title="Record"
+            copy="Show Magicus how you work. Narrate as you go."
+          />
+          <Pillar
+            icon={<Zap size={20} style={{ color: "#547863" }} fill="#547863" strokeWidth={0} />}
+            title="Analyse"
+            copy="See exactly which steps an agent can handle — and which need you."
+          />
+          <Pillar
+            icon={<Link2 size={20} style={{ color: "#547863" }} />}
+            title="Automate"
+            copy="Get a precise, platform-specific build guide. Deploy in hours."
+          />
         </div>
-        {!user && (
-          <button
-            onClick={() => openGate()}
-            className="hover:bg-[#EBF4DD] transition-colors"
-            style={{
-              background: "transparent",
-              color: "#547863",
-              padding: "8px 18px",
-              borderRadius: 999,
-              fontSize: 13,
-              fontWeight: 500,
-              border: "1px solid transparent",
-            }}
-          >
-            Sign in
-          </button>
-        )}
-      </header>
-
-      {/* Hero */}
-      <section
-        className="flex-1 flex items-center"
-        style={{ padding: "32px 32px 64px" }}
-      >
-        <div
-          className="w-full max-w-[1200px] mx-auto grid gap-12 md:gap-16 items-center"
-          style={{ gridTemplateColumns: "1fr" }}
-        >
-          {/* Two-column on md+, stacked on mobile */}
-          <div className="grid md:grid-cols-2 gap-12 md:gap-16 items-center">
-            {/* Left — copy */}
-            <div className="flex flex-col">
-              <div
-                style={{
-                  color: "#547863",
-                  fontSize: 12,
-                  letterSpacing: 1.6,
-                  textTransform: "uppercase",
-                  fontWeight: 500,
-                  marginBottom: 20,
-                }}
-              >
-                Workflow intelligence for the AI era
-              </div>
-
-              <h1
-                className="text-[44px] sm:text-[52px] md:text-[60px] lg:text-[64px]"
-                style={{
-                  ...dmSerif,
-                  color: "#3B4953",
-                  lineHeight: 1.05,
-                  letterSpacing: -1,
-                  marginBottom: 20,
-                }}
-              >
-                Do it once.
-                <br />
-                Skip it forever.
-              </h1>
-
-              <p
-                style={{
-                  fontSize: 18,
-                  color: "#547863",
-                  lineHeight: 1.55,
-                  maxWidth: 480,
-                  marginBottom: 32,
-                }}
-              >
-                You already know how your business works. Record yourself doing
-                it once — Magicus maps it, scores it, and builds you an
-                automation blueprint. You bring the magic.
-              </p>
-
-              <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 sm:gap-4">
-                <button
-                  onClick={() => guard(onStartMapping)}
-                  className="hover:opacity-90 transition-opacity flex items-center justify-center gap-2"
-                  style={{
-                    background: "#3B4953",
-                    color: "#EBF4DD",
-                    padding: "16px 28px",
-                    borderRadius: 999,
-                    fontSize: 15,
-                    fontWeight: 500,
-                    border: "none",
-                  }}
-                >
-                  Start mapping
-                  <ArrowRight size={16} />
-                </button>
-                <button
-                  onClick={onBrowseExamples}
-                  className="hover:underline flex items-center justify-center gap-1"
-                  style={{
-                    background: "transparent",
-                    color: "#547863",
-                    padding: "16px 12px",
-                    fontSize: 15,
-                    fontWeight: 500,
-                    border: "none",
-                  }}
-                >
-                  Browse workflows
-                  <ArrowRight size={14} />
-                </button>
-              </div>
-            </div>
-
-            {/* Right — animated butterfly with subtle glow */}
-            <div
-              className="relative flex items-center justify-center"
-              style={{ minHeight: 420 }}
-            >
-              <div className="magicus-hero-glow" />
-              <div style={{ position: "relative", zIndex: 1 }}>
-                <AnimatedButterfly />
-              </div>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      {/* Below the fold — feature pillars + social proof */}
-      <section
-        style={{
-          padding: "72px 32px 96px",
-          borderTop: "1px solid #EBF4DD",
-          background: "#FFFFFF",
-        }}
-      >
-        <div className="max-w-[1100px] mx-auto">
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-10 md:gap-12">
-            <Pillar
-              icon={<Mic size={20} style={{ color: "#547863" }} />}
-              title="Record"
-              copy="Show Magicus how you work. Narrate as you go."
-            />
-            <Pillar
-              icon={<Zap size={20} style={{ color: "#547863" }} fill="#547863" strokeWidth={0} />}
-              title="Analyse"
-              copy="See exactly which steps an agent can handle — and which need you."
-            />
-            <Pillar
-              icon={<Link2 size={20} style={{ color: "#547863" }} />}
-              title="Automate"
-              copy="Get a precise, platform-specific build guide. Deploy in hours."
-            />
-          </div>
-
-          <div
-            style={{
-              marginTop: 64,
-              paddingTop: 32,
-              borderTop: "1px solid #EBF4DD",
-              fontSize: 13,
-              color: "#90AB8B",
-              textAlign: "center",
-              letterSpacing: 0.2,
-            }}
-          >
-            Join thousands of AI-pilled leaders automating their workflows
-          </div>
-        </div>
-      </section>
-    </div>
+      </div>
+    </section>
   );
 }
 
@@ -257,9 +722,59 @@ function Pillar({
       >
         {title}
       </div>
-      <p style={{ fontSize: 14, color: "#547863", lineHeight: 1.55, maxWidth: 280 }}>
+      <p style={{ fontSize: 15, color: "#547863", lineHeight: 1.55, maxWidth: 280 }}>
         {copy}
       </p>
+    </div>
+  );
+}
+
+function SocialProof() {
+  return (
+    <section
+      style={{
+        padding: "32px 32px 64px",
+        background: "#F7FAF2",
+        backgroundImage:
+          "radial-gradient(rgba(144, 171, 139, 0.4) 1.2px, transparent 1.2px)",
+        backgroundSize: "28px 28px",
+        textAlign: "center",
+      }}
+    >
+      <div
+        style={{
+          ...dmSans,
+          fontSize: 14,
+          color: "#90AB8B",
+          letterSpacing: 0.2,
+        }}
+      >
+        Join thousands of AI-pilled leaders automating their workflows
+      </div>
+    </section>
+  );
+}
+
+// ─── Public component ─────────────────────────────────────────────────────
+export function LandingHero({
+  onMap,
+  onBrowseExamples,
+}: {
+  onMap: (description: string) => Promise<void>;
+  onBrowseExamples: () => void;
+}) {
+  return (
+    <div className="min-h-screen w-full flex flex-col" style={{ ...dmSans }}>
+      <div
+        className="flex flex-col"
+        style={{ minHeight: "100vh" }}
+      >
+        <HeroHeader />
+        <HeroSection onMap={onMap} onBrowseExamples={onBrowseExamples} />
+      </div>
+      <ButterflySection />
+      <PillarsSection />
+      <SocialProof />
     </div>
   );
 }

@@ -324,13 +324,10 @@ export default function Home() {
   if (!user && !started) {
     return (
       <LandingHero
-        onStartMapping={() => {
-          // Signed-in flow: open the new-workflow modal so user can describe
-          // their workflow immediately. This callback is replayed by the
-          // auth gate after a successful sign-in for unauth users.
-          setStarted(true);
-          setNewOpen(true);
-        }}
+        // The hero submits straight into handleMap. handleMap awaits the API
+        // and flips `started` so the page transitions to the canvas with the
+        // generated workflow already selected.
+        onMap={handleMap}
         onBrowseExamples={() => {
           setActiveCanvasId(EXAMPLES_CANVAS_ID);
           setStarted(true);

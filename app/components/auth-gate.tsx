@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect } from "react";
-import { Sparkles, X } from "lucide-react";
+import { X } from "lucide-react";
 import { GoogleLogin, type CredentialResponse } from "@react-oauth/google";
 import { useAuth, type AuthUser } from "@/lib/auth-context";
 
@@ -80,32 +80,17 @@ export function AuthGate() {
           <X size={16} />
         </button>
 
-        <div
-          className="flex items-center gap-2"
-          style={{
-            color: "#547863",
-            fontSize: 12,
-            letterSpacing: 0.6,
-            marginBottom: 12,
-          }}
-        >
-          <Sparkles size={14} />
-          <span style={{ textTransform: "uppercase", fontWeight: 500 }}>
-            Sign in to continue
-          </span>
-        </div>
-
         <h2
           style={{
             ...dmSerif,
             fontSize: 26,
             color: "#3B4953",
-            lineHeight: 1.15,
+            lineHeight: 1.2,
             letterSpacing: -0.3,
-            marginBottom: 8,
+            marginBottom: 10,
           }}
         >
-          One step before the magic.
+          One last thing before the magic happens
         </h2>
         <p
           style={{
@@ -115,9 +100,7 @@ export function AuthGate() {
             marginBottom: 24,
           }}
         >
-          Magicus saves your workflows to your account so they&apos;re there when
-          you come back. We only ever use your name and email — no posting, no
-          scraping, no data sold.
+          Sign in to save your workflows and access your canvas.
         </p>
 
         <div className="flex justify-center">
@@ -128,6 +111,7 @@ export function AuthGate() {
             size="large"
             text="continue_with"
             shape="pill"
+            width="370"
           />
         </div>
 
@@ -140,7 +124,7 @@ export function AuthGate() {
             lineHeight: 1.5,
           }}
         >
-          By continuing you agree to use Magicus responsibly.
+          No password needed. We&apos;ll never post without your permission.
         </div>
       </div>
     </div>

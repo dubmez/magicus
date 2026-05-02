@@ -68,3 +68,32 @@ body {
   pointer-events: none;
   z-index: 0;
 }
+
+/* ─── Hero placeholder cycling ─────────────────────────────────────────────
+   The prompt box rotates through example placeholders every 4 seconds.
+   Each new line fades in over the first ~700ms then sits visible until the
+   parent component swaps it out. */
+@keyframes magicus-placeholder-fade {
+  0%   { opacity: 0; transform: translateY(2px); }
+  18%  { opacity: 1; transform: translateY(0); }
+  100% { opacity: 1; transform: translateY(0); }
+}
+
+.magicus-placeholder-fade {
+  animation: magicus-placeholder-fade 4s ease-in-out;
+}
+
+/* ─── Voice waveform bars ────────────────────────────────────────────────── */
+@keyframes magicus-wave-bar {
+  0%, 100% { transform: scaleY(0.3); }
+  50%      { transform: scaleY(1); }
+}
+
+.magicus-wave-bar {
+  animation: magicus-wave-bar 0.9s ease-in-out infinite;
+  transform-origin: center;
+  background: #547863;
+  border-radius: 2px;
+  width: 4px;
+  height: 28px;
+}
