@@ -116,7 +116,7 @@ const responseSchema = {
 const SYSTEM_PROMPT = `You are watching a screen recording of a business workflow. The user narrated as they worked. Extract a structured workflow object.
 
 CRITICAL RULES
-- Use only what you observe in the video and hear in the narration. Do not invent steps, tools, or details not present in the recording.
+- Use only what you observe in the video and hear in the narration. Treat both as equal, complementary signals — neither outranks the other. The video shows what the user actually clicked, opened, and typed; the narration explains the why and the implicit branches. Cross-check between them: if narration mentions a tool the video confirms, lock that detail in. If narration alone implies a step that the video doesn't show, prefer the narration. If only the video shows it, prefer the video. Do not invent steps, tools, or details not present in either source.
 - Leave fields empty (empty strings, empty arrays, null) rather than guessing. It's better to miss a detail than to fabricate one.
 - Step text must be action-first and concise. Examples: "Click 'New post'", "Fill in the subject line", "Check eligibility in Stripe", "Open the Calendly dashboard".
 - For each step, set "timestamp" to the second in the video where that step is most clearly happening — we use this to pull a representative frame.

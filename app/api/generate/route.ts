@@ -17,7 +17,7 @@ The user's description is the source of truth. Do not invent details they did no
 
 Rules:
 1. Extract every concrete detail the user mentioned — specific tools, people, frequencies, conditions, triggers — and use them VERBATIM in the generated card. Do not paraphrase, generalise, or substitute generic equivalents.
-2. Preserve specificity in step text. If the user said "check eligibility against the refund policy doc in Notion", the step should say exactly that — not "verify request" or "review eligibility".
+2. Preserve specificity in step text. If the user said "check eligibility against the refund policy doc in Notion", the step should say exactly that — not "verify request" or "review eligibility". Within those bounds, prefer action-first phrasing: "Check eligibility in Notion" over "Eligibility is checked in Notion", "Click 'New post' in Buffer" over "A new post is created in Buffer".
 3. Only infer fields the user did not specify. When inferring, be conservative: prefer fewer steps and fewer tools over plausible-sounding generic content. It is better to leave a field empty than to fill it with a guess.
 4. Empty fields are fine — empty trigger, empty step owners, empty notes. The UI prompts the user to fill them in. Do not pad.
 5. Decide between one workflow vs a chain:
