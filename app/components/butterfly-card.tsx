@@ -1,6 +1,6 @@
 "use client";
 
-import { Zap, Link2 } from "lucide-react";
+import { Zap, Link2, AlertCircle } from "lucide-react";
 import type { Step } from "@/lib/workflows";
 
 type IOItem = { name: string; source: string };
@@ -109,25 +109,44 @@ export function ButterflyCard({
       )}
 
       {incomplete && (
-        <div
-          aria-hidden
-          className="absolute"
-          style={{
-            inset: 0,
-            borderRadius: 24,
-            border: "1.5px dashed #C99461",
-            pointerEvents: "none",
-            zIndex: 30,
-          }}
-        />
+        <>
+          <div
+            aria-hidden
+            className="absolute"
+            style={{
+              inset: 0,
+              borderRadius: 24,
+              border: "2.5px dashed #C99461",
+              pointerEvents: "none",
+              zIndex: 30,
+            }}
+          />
+          <div
+            className="absolute z-20 flex items-center gap-1"
+            style={{
+              top: 0,
+              left: 0,
+              background: "#C99461",
+              color: "#FFFFFF",
+              fontSize: compact ? 9 : 10,
+              fontWeight: 500,
+              padding: compact ? "3px 8px" : "5px 10px",
+              borderRadius: 999,
+              letterSpacing: 0.3,
+            }}
+          >
+            <AlertCircle size={compact ? 10 : 12} />
+            Set trigger
+          </div>
+        </>
       )}
 
       {showAutomatable && (
         <div
           className="absolute z-20 flex items-center gap-1"
           style={{
-            top: -10,
-            right: -8,
+            top: 0,
+            right: 0,
             background: "#547863",
             color: "#EBF4DD",
             fontSize: compact ? 9 : 10,
@@ -328,36 +347,38 @@ export function ButterflyCard({
         </div>
       </div>
 
-      {/* FOOT */}
-      <div className="flex justify-center" style={{ marginTop: compact ? -6 : -8 }}>
-        <div
-          style={{
-            background: "#547863",
-            borderRadius: compact ? 10 : 14,
-            padding: compact ? "5px 9px" : "8px 14px",
-            display: "flex",
-            gap: compact ? 4 : 6,
-            zIndex: 10,
-            position: "relative",
-          }}
-        >
-          {data.tools.map((tool) => (
-            <span
-              key={tool}
-              style={{
-                background: "rgba(255, 255, 255, 0.18)",
-                color: "#FFFFFF",
-                fontSize: compact ? 8 : 10,
-                fontWeight: 500,
-                padding: compact ? "2px 6px" : "3px 9px",
-                borderRadius: 999,
-              }}
-            >
-              {tool}
-            </span>
-          ))}
+      {/* FOOT — only when there are tools to show */}
+      {data.tools.length > 0 && (
+        <div className="flex justify-center" style={{ marginTop: compact ? -6 : -8 }}>
+          <div
+            style={{
+              background: "#547863",
+              borderRadius: compact ? 10 : 14,
+              padding: compact ? "5px 9px" : "8px 14px",
+              display: "flex",
+              gap: compact ? 4 : 6,
+              zIndex: 10,
+              position: "relative",
+            }}
+          >
+            {data.tools.map((tool) => (
+              <span
+                key={tool}
+                style={{
+                  background: "rgba(255, 255, 255, 0.18)",
+                  color: "#FFFFFF",
+                  fontSize: compact ? 8 : 10,
+                  fontWeight: 500,
+                  padding: compact ? "2px 6px" : "3px 9px",
+                  borderRadius: 999,
+                }}
+              >
+                {tool}
+              </span>
+            ))}
+          </div>
         </div>
-      </div>
+      )}
     </div>
   );
 }

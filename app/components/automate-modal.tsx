@@ -1,8 +1,9 @@
 "use client";
 
-import { useRef, useState } from "react";
-import { X, Zap, ChevronDown, Loader2, Copy, Check } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { X, Zap, ChevronDown, Loader2, Copy, Check, RefreshCw } from "lucide-react";
 import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 import type { Components } from "react-markdown";
 import type { Workflow, Connection } from "@/lib/workflows";
 
@@ -46,9 +47,41 @@ const mdComponents: Components = {
   ol: ({ children }) => (
     <ol style={{ paddingLeft: 22, marginBottom: 10, listStyleType: "decimal" }}>{children}</ol>
   ),
-  li: ({ children }) => (
-    <li style={{ fontSize: 13, color: "#3B4953", lineHeight: 1.6, marginBottom: 4 }}>{children}</li>
-  ),
+  li: ({ children, className }) => {
+    const isTask = className?.includes("task-list-item");
+    return (
+      <li
+        style={{
+          fontSize: 13,
+          color: "#3B4953",
+          lineHeight: 1.6,
+          marginBottom: 4,
+          listStyle: isTask ? "none" : undefined,
+          marginLeft: isTask ? -18 : undefined,
+        }}
+      >
+        {children}
+      </li>
+    );
+  },
+  input: ({ type, checked, disabled }) => {
+    if (type !== "checkbox") return null;
+    return (
+      <input
+        type="checkbox"
+        checked={!!checked}
+        disabled={disabled}
+        readOnly
+        style={{
+          accentColor: "#547863",
+          marginRight: 8,
+          transform: "translateY(1px)",
+          width: 13,
+          height: 13,
+        }}
+      />
+    );
+  },
   strong: ({ children }) => (
     <strong style={{ color: "#3B4953", fontWeight: 600 }}>{children}</strong>
   ),
@@ -94,12 +127,10 @@ function PlatformSection({
   const [mode, setMode] = useState<ViewMode>("read");
   const [copied, setCopied] = useState(false);
   const readRef = useRef<HTMLDivElement>(null);
+  const headerRef = useRef<HTMLButtonElement>(null);
   const copyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const toggle = async () => {
-    if (open) { setOpen(false); return; }
-    setOpen(true);
-    if (state !== "idle") return;
+  const fetchInstructions = async () => {
     setState("loading");
     try {
       const res = await fetch("/api/automate", {
@@ -115,6 +146,26 @@ function PlatformSection({
       setState("error");
     }
   };
+
+  const toggle = async () => {
+    if (open) { setOpen(false); return; }
+    setOpen(true);
+    if (state !== "idle") return;
+    await fetchInstructions();
+  };
+
+  const retry = async () => {
+    setState("idle");
+    await fetchInstructions();
+  };
+
+  // When content finishes loading, scroll the section header into view
+  // so the user sees the title first instead of mid-document.
+  useEffect(() => {
+    if (state === "done") {
+      headerRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    }
+  }, [state]);
 
   const handleCopy = async () => {
     const text =
@@ -134,6 +185,7 @@ function PlatformSection({
   return (
     <div style={{ border: "1px solid #EBF4DD", borderRadius: 12, overflow: "hidden", flexShrink: 0 }}>
       <button
+        ref={headerRef}
         onClick={toggle}
         className="w-full flex items-center justify-between transition-colors hover:bg-[#FBFDF7]"
         style={{ padding: "14px 18px", background: open ? "#FBFDF7" : "#FFFFFF" }}
@@ -169,8 +221,36 @@ function PlatformSection({
             </div>
           )}
           {state === "error" && (
-            <div style={{ padding: "18px 20px", color: "#C0392B", fontSize: 13 }}>
-              Something went wrong. Check your API key and try again.
+            <div
+              style={{
+                padding: "16px 20px",
+                fontSize: 13,
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                gap: 12,
+              }}
+            >
+              <span style={{ color: "#C0392B" }}>
+                Something went wrong. Check your API key and try again.
+              </span>
+              <button
+                onClick={retry}
+                className="flex items-center gap-1.5 transition-colors hover:bg-[#EBF4DD]"
+                style={{
+                  padding: "6px 12px",
+                  borderRadius: 999,
+                  fontSize: 12,
+                  fontWeight: 500,
+                  color: "#3B4953",
+                  background: "#FFFFFF",
+                  border: "1px solid #EBF4DD",
+                  flexShrink: 0,
+                }}
+              >
+                <RefreshCw size={12} />
+                Try again
+              </button>
             </div>
           )}
           {state === "done" && (
@@ -192,7 +272,10 @@ function PlatformSection({
                     padding: 3,
                   }}
                 >
-                  {(["read", "markdown"] as const).map((m) => {
+                  {([
+                    { mode: "read" as const, label: "Formatted" },
+                    { mode: "markdown" as const, label: "Raw text" },
+                  ]).map(({ mode: m, label }) => {
                     const active = mode === m;
                     return (
                       <button
@@ -205,11 +288,10 @@ function PlatformSection({
                           fontWeight: active ? 500 : 400,
                           background: active ? "#3B4953" : "transparent",
                           color: active ? "#EBF4DD" : "#547863",
-                          textTransform: "capitalize",
                           transition: "background 0.12s, color 0.12s",
                         }}
                       >
-                        {m}
+                        {label}
                       </button>
                     );
                   })}
@@ -236,7 +318,7 @@ function PlatformSection({
               <div style={{ padding: "16px 20px" }}>
                 {mode === "read" ? (
                   <div ref={readRef}>
-                    <ReactMarkdown components={mdComponents}>
+                    <ReactMarkdown components={mdComponents} remarkPlugins={[remarkGfm]}>
                       {instructions}
                     </ReactMarkdown>
                   </div>
@@ -323,6 +405,13 @@ export function AutomateModal({
   connections: Connection[];
   onClose: () => void;
 }) {
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [open, onClose]);
+
   if (!open || workflows.length === 0) return null;
 
   const title =

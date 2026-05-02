@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Sparkles, Send, Loader2, X, ArrowRight, Mic } from "lucide-react";
+import { Sparkles, Send, Loader2, X, ArrowRight, Mic, AlertCircle, AlertTriangle } from "lucide-react";
+import { useRequireAuth } from "@/lib/auth-context";
 
 const dmSerif = {
   fontFamily: "var(--font-dm-serif), serif",
@@ -56,10 +57,12 @@ export function Landing({
   const [voiceSupported, setVoiceSupported] = useState(false);
   const [isRecording, setIsRecording] = useState(false);
   const [permissionDenied, setPermissionDenied] = useState(false);
+  const [submitError, setSubmitError] = useState<string | null>(null);
   const taRef = useRef<HTMLTextAreaElement>(null);
   const recognitionRef = useRef<SpeechRecognitionLike | null>(null);
   const baseTextRef = useRef("");
   const denyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const guard = useRequireAuth();
 
   useEffect(() => {
     taRef.current?.focus();
@@ -72,6 +75,14 @@ export function Landing({
       if (denyTimerRef.current) clearTimeout(denyTimerRef.current);
     };
   }, []);
+
+  // ESC closes the modal variant
+  useEffect(() => {
+    if (mode !== "modal" || !onCancel) return;
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") onCancel(); };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [mode, onCancel]);
 
   const stopRecording = () => {
     recognitionRef.current?.stop();
@@ -105,16 +116,16 @@ export function Landing({
       if (e.error === "not-allowed" || e.error === "service-not-allowed") {
         setPermissionDenied(true);
         if (denyTimerRef.current) clearTimeout(denyTimerRef.current);
-        denyTimerRef.current = setTimeout(() => setPermissionDenied(false), 3000);
+        denyTimerRef.current = setTimeout(() => setPermissionDenied(false), 6000);
       }
       setIsRecording(false);
     };
 
     recognitionRef.current = rec;
     setPermissionDenied(false);
-    setIsRecording(true);
     try {
       rec.start();
+      setIsRecording(true);
     } catch {
       setIsRecording(false);
       recognitionRef.current = null;
@@ -122,19 +133,32 @@ export function Landing({
   };
 
   const toggleRecording = () => {
-    if (isRecording) stopRecording();
-    else startRecording();
+    if (isRecording) {
+      stopRecording();
+      return;
+    }
+    // Voice input creates data — gate it.
+    guard(() => startRecording());
   };
 
-  const submit = async () => {
+  const doSubmit = async () => {
     if (stage !== "idle" || text.trim().length === 0) return;
     if (isRecording) stopRecording();
+    setSubmitError(null);
     setStage("generating");
     try {
       await onMap(text);
     } catch {
+      setSubmitError("Couldn't generate a workflow — check your connection and try again.");
       setStage("idle");
     }
+  };
+
+  const submit = () => {
+    if (text.trim().length === 0) return;
+    // Auth-gate the entire submission. After sign-in the gate replays doSubmit
+    // automatically — no lost context.
+    guard(() => { void doSubmit(); });
   };
 
   const content = (
@@ -231,13 +255,44 @@ export function Landing({
 
       {permissionDenied && (
         <div
+          role="alert"
+          className="flex items-start gap-2"
           style={{
-            marginTop: 8,
+            marginTop: 10,
+            padding: "8px 12px",
+            background: "#FEF3E2",
+            border: "1px solid #F5C28C",
+            borderRadius: 8,
             fontSize: 12,
-            color: "#90AB8B",
+            color: "#8A4B0F",
+            lineHeight: 1.4,
           }}
         >
-          Microphone access denied
+          <AlertTriangle size={14} style={{ flexShrink: 0, marginTop: 1 }} />
+          <span>
+            <strong style={{ fontWeight: 600 }}>Microphone access denied.</strong>{" "}
+            Enable microphone in your browser settings, then try again.
+          </span>
+        </div>
+      )}
+
+      {submitError && (
+        <div
+          role="alert"
+          className="flex items-start gap-2"
+          style={{
+            marginTop: 10,
+            padding: "8px 12px",
+            background: "#FDECEC",
+            border: "1px solid #E5A8A8",
+            borderRadius: 8,
+            fontSize: 12,
+            color: "#8B2A2A",
+            lineHeight: 1.4,
+          }}
+        >
+          <AlertCircle size={14} style={{ flexShrink: 0, marginTop: 1 }} />
+          <span>{submitError}</span>
         </div>
       )}
 
@@ -246,7 +301,7 @@ export function Landing({
         style={{ marginTop: 18 }}
       >
         <div style={{ fontSize: 12, color: "#90AB8B" }}>
-          {stage === "idle" && "Tip: ⌘ + Enter to map"}
+          {stage === "idle" && "Tip: ⌘/Ctrl + Enter to map"}
           {stage === "generating" && "Mapping into a butterfly…"}
         </div>
         <div className="flex items-center gap-2">
@@ -256,7 +311,7 @@ export function Landing({
               className="flex items-center gap-1 hover:underline"
               style={{ color: "#547863", fontSize: 13, padding: "10px 12px" }}
             >
-              Or explore the demo workflows
+              Browse example workflows
               <ArrowRight size={13} />
             </button>
           )}

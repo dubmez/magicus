@@ -1,6 +1,124 @@
 "use client";
 
-import { Download, Plus, Zap } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { Download, Plus, Zap, LogOut } from "lucide-react";
+import { useAuth } from "@/lib/auth-context";
+
+function UserMenu() {
+  const { user, signOut, openGate } = useAuth();
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const onDoc = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener("mousedown", onDoc);
+    return () => document.removeEventListener("mousedown", onDoc);
+  }, [open]);
+
+  if (!user) {
+    return (
+      <button
+        onClick={() => openGate()}
+        className="hover:bg-[#EBF4DD] transition-colors"
+        style={{
+          background: "transparent",
+          color: "#547863",
+          padding: "8px 14px",
+          borderRadius: 999,
+          fontSize: 13,
+          fontWeight: 500,
+          border: "1px solid transparent",
+        }}
+      >
+        Sign in
+      </button>
+    );
+  }
+
+  const initial = user.name?.[0]?.toUpperCase() ?? "?";
+
+  return (
+    <div ref={ref} style={{ position: "relative" }}>
+      <button
+        onClick={() => setOpen((v) => !v)}
+        className="hover:opacity-90 transition-opacity"
+        aria-label="Account menu"
+        style={{
+          width: 32,
+          height: 32,
+          borderRadius: 999,
+          padding: 0,
+          background: user.avatarUrl ? "#EBF4DD" : "#547863",
+          color: "#FFFFFF",
+          fontSize: 13,
+          fontWeight: 600,
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          overflow: "hidden",
+          border: "1px solid #EBF4DD",
+        }}
+      >
+        {user.avatarUrl ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={user.avatarUrl}
+            alt=""
+            referrerPolicy="no-referrer"
+            style={{ width: "100%", height: "100%", objectFit: "cover" }}
+          />
+        ) : (
+          initial
+        )}
+      </button>
+
+      {open && (
+        <div
+          style={{
+            position: "absolute",
+            top: "calc(100% + 8px)",
+            right: 0,
+            minWidth: 220,
+            background: "#FFFFFF",
+            border: "1px solid #EBF4DD",
+            borderRadius: 12,
+            padding: 6,
+            boxShadow: "0 12px 32px rgba(59, 73, 83, 0.14)",
+            zIndex: 80,
+          }}
+        >
+          <div style={{ padding: "8px 10px 10px", borderBottom: "1px solid #EBF4DD", marginBottom: 4 }}>
+            <div style={{ fontSize: 13, fontWeight: 500, color: "#3B4953", lineHeight: 1.3 }}>
+              {user.name}
+            </div>
+            <div style={{ fontSize: 11, color: "#90AB8B", marginTop: 2, wordBreak: "break-all" }}>
+              {user.email}
+            </div>
+          </div>
+          <button
+            onClick={() => { setOpen(false); signOut(); }}
+            className="w-full flex items-center gap-2 hover:bg-[#F7FAF2] transition-colors"
+            style={{
+              padding: "8px 10px",
+              borderRadius: 8,
+              fontSize: 13,
+              color: "#3B4953",
+              background: "transparent",
+              border: "none",
+              textAlign: "left",
+            }}
+          >
+            <LogOut size={13} style={{ color: "#547863" }} />
+            Sign out
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
 
 export function TopBar({
   onExport,
@@ -75,6 +193,7 @@ export function TopBar({
         <button
           onClick={onAutomate}
           disabled={automateCount === 0}
+          title={automateCount === 0 ? "Select a workflow first" : undefined}
           className="flex items-center gap-2 transition-all hover:opacity-90"
           style={{
             background: automateCount > 0 ? "#547863" : "#EBF4DD",
@@ -92,7 +211,8 @@ export function TopBar({
           {automateCount > 0 && (
             <span
               style={{
-                background: "rgba(235,244,221,0.25)",
+                background: "#EBF4DD",
+                color: "#3B4953",
                 borderRadius: 999,
                 padding: "1px 7px",
                 fontSize: 11,
@@ -118,6 +238,8 @@ export function TopBar({
           <Download size={14} />
           Export .md
         </button>
+        <div style={{ width: 8 }} />
+        <UserMenu />
       </div>
     </div>
   );

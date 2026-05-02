@@ -1,9 +1,10 @@
 "use client";
 
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { X, Download, Zap, Link2, Trash2, Plus, Check, Clock, Hand } from "lucide-react";
 import type { Workflow, Theme, Trigger } from "@/lib/workflows";
 import { THEME_META } from "@/lib/workflows";
+import { useAuth } from "@/lib/auth-context";
 
 const dmSerif = { fontFamily: "var(--font-dm-serif), serif", fontStyle: "italic" as const };
 
@@ -67,6 +68,60 @@ function InlineInput({
   );
 }
 
+// Auto-growing textarea for multi-line names — wraps instead of truncating.
+function InlineNameInput({
+  value,
+  onChange,
+  placeholder,
+  readOnly = false,
+  style,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  placeholder?: string;
+  readOnly?: boolean;
+  style?: React.CSSProperties;
+}) {
+  const [focused, setFocused] = useState(false);
+  const ref = useRef<HTMLTextAreaElement>(null);
+
+  const resize = useCallback(() => {
+    const el = ref.current;
+    if (!el) return;
+    el.style.height = "auto";
+    el.style.height = `${el.scrollHeight}px`;
+  }, []);
+
+  useEffect(() => { resize(); }, [value, resize]);
+
+  return (
+    <textarea
+      ref={ref}
+      value={value}
+      onChange={(e) => { onChange(e.target.value); resize(); }}
+      placeholder={placeholder}
+      readOnly={readOnly}
+      rows={1}
+      onFocus={() => setFocused(true)}
+      onBlur={() => setFocused(false)}
+      style={{
+        background: "transparent",
+        border: "none",
+        borderBottom: `1px solid ${focused && !readOnly ? "#547863" : "#EBF4DD"}`,
+        outline: "none",
+        fontFamily: "inherit",
+        color: "inherit",
+        width: "100%",
+        padding: "2px 0",
+        resize: "none",
+        overflow: "hidden",
+        cursor: readOnly ? "default" : "text",
+        ...style,
+      }}
+    />
+  );
+}
+
 function InlineTextarea({
   value,
   onChange,
@@ -84,6 +139,8 @@ function InlineTextarea({
 }) {
   const [focused, setFocused] = useState(false);
   const showFocus = focused && !readOnly;
+  // Show a subtle dashed affordance when empty + unfocused, so users see it's editable.
+  const showAffordance = !readOnly && !focused && value.length === 0;
   return (
     <textarea
       value={value}
@@ -95,14 +152,18 @@ function InlineTextarea({
       onBlur={() => setFocused(false)}
       style={{
         background: showFocus ? "#F7FAF2" : "transparent",
-        border: `1px solid ${showFocus ? "#547863" : "transparent"}`,
+        border: showFocus
+          ? "1px solid #547863"
+          : showAffordance
+          ? "1px dashed #90AB8B"
+          : "1px solid transparent",
         borderRadius: 8,
         outline: "none",
         fontFamily: "inherit",
         color: "#3B4953",
         fontSize: 13,
         width: "100%",
-        padding: showFocus ? "8px 10px" : "0",
+        padding: showFocus || showAffordance ? "8px 10px" : "0",
         resize: "none",
         lineHeight: 1.55,
         transition: "background 0.12s, border 0.12s, padding 0.12s",
@@ -216,7 +277,7 @@ function TriggerPicker({
                 borderRadius: 8,
                 background: active ? "#3B4953" : "#F7FAF2",
                 color: active ? "#EBF4DD" : "#547863",
-                border: `1px solid ${active ? "#3B4953" : "#EBF4DD"}`,
+                border: `1px solid ${active ? "#3B4953" : "#90AB8B"}`,
                 fontSize: 11,
                 fontWeight: 500,
                 display: "flex",
@@ -224,7 +285,7 @@ function TriggerPicker({
                 alignItems: "center",
                 gap: 4,
                 cursor: "pointer",
-                transition: "background 0.12s, color 0.12s",
+                transition: "background 0.12s, color 0.12s, border-color 0.12s",
               }}
             >
               <Icon size={14} />
@@ -293,12 +354,18 @@ export function DetailPanel({
   onDelete: (id: string) => void;
   onUpdate: (id: string, changes: Partial<Workflow>) => void;
 }) {
+  const { user, openGate } = useAuth();
+  // Unauth users can browse but not edit their workflows. Examples-canvas
+  // read-only takes precedence in the banner copy.
+  const unauthReadOnly = !user && !readOnly;
+  const effectiveReadOnly = readOnly || unauthReadOnly;
+
   const update = useCallback(
     (changes: Partial<Workflow>) => {
-      if (readOnly || !workflow) return;
+      if (effectiveReadOnly || !workflow) return;
       onUpdate(workflow.id, changes);
     },
-    [workflow, onUpdate, readOnly]
+    [workflow, onUpdate, effectiveReadOnly]
   );
 
   const open = !!workflow;
@@ -354,19 +421,24 @@ export function DetailPanel({
                 </span>
               </div>
 
-              {/* Editable name */}
-              <InlineInput
+              {/* Editable name — auto-grows so long titles wrap instead of truncating */}
+              <InlineNameInput
                 value={workflow.name}
                 onChange={(v) => update({ name: v })}
                 placeholder="Workflow name"
-                style={{ ...dmSerif, fontSize: 22, color: "#3B4953", lineHeight: "1.2" }}
+                style={{ ...dmSerif, fontSize: 22, color: "#3B4953", lineHeight: 1.2 }}
               />
             </div>
 
             <div className="flex items-center gap-1" style={{ marginTop: 4 }}>
-              {!readOnly && (
+              {!effectiveReadOnly && (
                 <button
-                  onClick={() => onDelete(workflow.id)}
+                  onClick={() => {
+                    const ok = window.confirm(
+                      `Delete "${workflow.name}"? This can't be undone.`
+                    );
+                    if (ok) onDelete(workflow.id);
+                  }}
                   className="hover:bg-[#EBF4DD] rounded-md p-1.5"
                   style={{ color: "#90AB8B" }}
                   aria-label="Delete workflow"
@@ -400,15 +472,45 @@ export function DetailPanel({
             </div>
           )}
 
+          {unauthReadOnly && (
+            <div
+              className="flex items-center justify-between gap-3"
+              style={{
+                padding: "10px 20px",
+                fontSize: 12,
+                color: "#3B4953",
+                background: "#F7FAF2",
+                borderBottom: "1px solid #EBF4DD",
+              }}
+            >
+              <span>Sign in to edit your workflows.</span>
+              <button
+                onClick={() => openGate()}
+                className="hover:opacity-90 transition-opacity"
+                style={{
+                  background: "#3B4953",
+                  color: "#EBF4DD",
+                  padding: "4px 12px",
+                  borderRadius: 999,
+                  fontSize: 12,
+                  fontWeight: 500,
+                  flexShrink: 0,
+                }}
+              >
+                Sign in
+              </button>
+            </div>
+          )}
+
           {/* Scrollable body */}
           <fieldset
-            disabled={readOnly}
+            disabled={effectiveReadOnly}
             className="flex-1 overflow-y-auto"
             style={{
               padding: "20px",
               border: "none",
               minWidth: 0,
-              opacity: readOnly ? 0.85 : 1,
+              opacity: effectiveReadOnly ? 0.85 : 1,
             }}
           >
 
@@ -695,7 +797,7 @@ export function DetailPanel({
 
           {/* Footer */}
           <div style={{ borderTop: "1px solid #EBF4DD", padding: 12, display: "flex", gap: 8 }}>
-            {!readOnly && (
+            {!effectiveReadOnly && (
             <button
               onClick={() => onChain(workflow.id)}
               className="flex items-center justify-center gap-2 hover:bg-[#EBF4DD] transition-colors"

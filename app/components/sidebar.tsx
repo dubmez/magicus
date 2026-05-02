@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Plus, ChevronRight, ChevronDown, Zap, Link2 } from "lucide-react";
+import { Plus, ChevronRight, ChevronDown, Zap, Link2, Pencil } from "lucide-react";
 import type { Canvas, Workflow } from "@/lib/workflows";
 import {
   THEME_META,
@@ -68,7 +68,7 @@ function CanvasName({
     <button
       onClick={onClick}
       onDoubleClick={() => { if (!readOnly) setEditing(true); }}
-      className="flex-1 text-left truncate transition-colors flex items-center gap-2 min-w-0"
+      className="group flex-1 text-left truncate transition-colors flex items-center gap-2 min-w-0"
       style={{
         ...dmSerif,
         fontSize: 14,
@@ -82,6 +82,14 @@ function CanvasName({
       title={readOnly ? "Read-only" : "Click to switch · Double-click to rename"}
     >
       <span className="truncate" style={{ opacity: readOnly ? 0.85 : 1 }}>{name}</span>
+      {!readOnly && (
+        <Pencil
+          size={10}
+          aria-hidden
+          className="opacity-0 group-hover:opacity-60 transition-opacity flex-shrink-0"
+          style={{ color: "#547863" }}
+        />
+      )}
       {readOnly && (
         <span
           style={{
@@ -251,7 +259,13 @@ function WorkflowRow({
         <Link2 size={10} style={{ color: "#90AB8B", flexShrink: 0 }} />
       )}
       {automatable && (
-        <Zap size={10} fill="#547863" strokeWidth={0} style={{ flexShrink: 0 }} />
+        <span
+          title="Marked automatable"
+          aria-label="Marked automatable"
+          style={{ display: "inline-flex", flexShrink: 0 }}
+        >
+          <Zap size={10} fill="#547863" strokeWidth={0} />
+        </span>
       )}
     </button>
   );
@@ -427,10 +441,10 @@ export function Sidebar({
                         fontSize: 11,
                         color: "#90AB8B",
                         padding: "4px 8px",
-                        fontStyle: "italic",
+                        lineHeight: 1.45,
                       }}
                     >
-                      No workflows yet
+                      Use “New workflow” in the toolbar to map your first workflow.
                     </div>
                   )}
                 </div>

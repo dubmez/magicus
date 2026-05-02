@@ -180,6 +180,9 @@ export function Canvas({
   const [hovered, setHovered] = useState<string | null>(null);
   const [hoveredConn, setHoveredConn] = useState<string | null>(null);
   const [panning, setPanning] = useState(false);
+  // Hint hides after the first pan/zoom — keeps it discoverable for new users
+  // without being permanent visual noise.
+  const [hintVisible, setHintVisible] = useState(true);
   const panStart = useRef<{ x: number; y: number; tx: number; ty: number } | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
 
@@ -259,6 +262,7 @@ export function Canvas({
     setTx(mx - (mx - tx) * k);
     setTy(my - (my - ty) * k);
     setScale(next);
+    if (hintVisible) setHintVisible(false);
   };
 
   const onMouseDown = (e: React.MouseEvent) => {
@@ -267,6 +271,7 @@ export function Canvas({
     setPanning(true);
     if (!connectMode) onSelect(null);
     panStart.current = { x: e.clientX, y: e.clientY, tx, ty };
+    if (hintVisible) setHintVisible(false);
   };
   const onMouseMove = (e: React.MouseEvent) => {
     if (!panning || !panStart.current) return;
@@ -381,8 +386,10 @@ export function Canvas({
               hoveredConn === key;
             const midX = (ax + bx) / 2;
             const midY = (ay + by) / 2;
-            const labelText = c.label ?? "Connects to";
+            const hasLabel = !!c.label;
+            const labelText = c.label ?? "→";
             const labelW = labelText.length * 7.2 + 28;
+            const isHoveredLabel = hoveredConn === key;
             return (
               <g key={key}>
                 <path
@@ -401,14 +408,29 @@ export function Canvas({
                   onMouseEnter={() => setHoveredConn(key)}
                   onMouseLeave={() => setHoveredConn(null)}
                 >
-                  <rect x={-labelW / 2} y={-11} width={labelW} height={22} rx={11}
-                    fill="#FFFFFF" stroke="#90AB8B" strokeWidth={1} />
-                  <text x={hoveredConn === key ? -7 : 0} textAnchor="middle"
-                    dominantBaseline="middle" fontSize={11} fill="#3B4953"
-                    fontFamily="var(--font-dm-sans), sans-serif">
+                  <title>Click to edit label</title>
+                  <rect
+                    x={-labelW / 2}
+                    y={-11}
+                    width={labelW}
+                    height={22}
+                    rx={11}
+                    fill={isHoveredLabel ? "#EBF4DD" : "#FFFFFF"}
+                    stroke="#90AB8B"
+                    strokeWidth={1}
+                  />
+                  <text
+                    x={isHoveredLabel ? -7 : 0}
+                    textAnchor="middle"
+                    dominantBaseline="middle"
+                    fontSize={11}
+                    fill={hasLabel ? "#3B4953" : "#90AB8B"}
+                    fontStyle={hasLabel ? "normal" : "italic"}
+                    fontFamily="var(--font-dm-sans), sans-serif"
+                  >
                     {labelText}
                   </text>
-                  {hoveredConn === key && (
+                  {isHoveredLabel && (
                     <g
                       transform={`translate(${labelW / 2 - 12}, 0)`}
                       onClick={(e) => {
@@ -538,7 +560,7 @@ export function Canvas({
         </button>
       </div>
 
-      {/* Hint */}
+      {/* Hint — fades after the first pan or zoom */}
       <div
         className="absolute bottom-6 left-6"
         style={{
@@ -549,6 +571,8 @@ export function Canvas({
           borderRadius: 999,
           pointerEvents: "none",
           border: "1px solid #EBF4DD",
+          opacity: hintVisible ? 1 : 0,
+          transition: "opacity 400ms ease",
         }}
       >
         Drag to pan · Scroll to zoom · Shift-click to multi-select

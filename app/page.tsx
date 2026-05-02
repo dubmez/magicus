@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Canvas } from "./components/canvas";
 import { TopBar } from "./components/top-bar";
 import { Sidebar } from "./components/sidebar";
@@ -8,35 +8,11 @@ import { DetailPanel } from "./components/detail-panel";
 import { ExportModal } from "./components/export-modal";
 import { AutomateModal } from "./components/automate-modal";
 import { Landing } from "./components/landing";
-import { type Workflow, type Canvas as CanvasType, type Theme, type Connection } from "@/lib/workflows";
+import { LandingHero } from "./components/landing-hero";
+import { type Workflow, type Canvas as CanvasType, type Connection, EXAMPLES_CANVAS_ID } from "@/lib/workflows";
 import { useWorkflows } from "@/lib/use-workflows";
 import { workflowToMarkdown, allWorkflowsToMarkdown } from "@/lib/markdown";
-
-function inferTheme(text: string): Theme {
-  const t = text.toLowerCase();
-  if (/(invoice|payment|finance|tax|expense|budget)/.test(t)) return "finance";
-  if (/(content|newsletter|campaign|seo|brand|social|marketing)/.test(t)) return "marketing";
-  if (/(vendor|onboard|ops|operations|inventory|fulfil|fulfill)/.test(t)) return "operations";
-  return "sales";
-}
-
-function fallbackWorkflow(id: string, description: string): Workflow {
-  return {
-    id,
-    theme: inferTheme(description),
-    name: description.split(/[.!?]/)[0].trim().slice(0, 60) || "New workflow",
-    trigger: null,
-    why: description.trim(),
-    inputs: [],
-    steps: [],
-    outputs: [],
-    tools: [],
-    automationScore: 50,
-    automationRationale: "",
-    x: 0,
-    y: 0,
-  };
-}
+import { useAuth, useRequireAuth } from "@/lib/auth-context";
 
 type GeneratedWorkflow = Omit<Workflow, "x" | "y">;
 type GeneratedResponse = {
@@ -44,20 +20,18 @@ type GeneratedResponse = {
   connections: { from: string; to: string; label?: string }[];
 };
 
-async function generateFromAPI(description: string): Promise<GeneratedResponse | null> {
-  try {
-    const res = await fetch("/api/generate", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ description }),
-    });
-    if (!res.ok) return null;
-    const data = (await res.json()) as GeneratedResponse;
-    if (!data?.workflows || data.workflows.length === 0) return null;
-    return data;
-  } catch {
-    return null;
+async function generateFromAPI(description: string): Promise<GeneratedResponse> {
+  const res = await fetch("/api/generate", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ description }),
+  });
+  if (!res.ok) throw new Error(`generate failed: ${res.status}`);
+  const data = (await res.json()) as GeneratedResponse;
+  if (!data?.workflows || data.workflows.length === 0) {
+    throw new Error("generate returned no workflows");
   }
+  return data;
 }
 
 export default function Home() {
@@ -70,6 +44,14 @@ export default function Home() {
     setActiveCanvasId,
     activeCanvas,
   } = useWorkflows();
+  const { user, hydrated } = useAuth();
+  const guard = useRequireAuth();
+
+  // After a sign-out, drop the user back to the landing hero. They likely
+  // intended to leave the workspace, not stare at someone else's canvas.
+  useEffect(() => {
+    if (hydrated && !user) setStarted(false);
+  }, [hydrated, user]);
 
   const [started, setStarted] = useState(false);
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -137,19 +119,21 @@ export default function Home() {
   };
 
   const handleRenameCanvas = (id: string, name: string) => {
-    updateCanvas(id, { name });
+    guard(() => updateCanvas(id, { name }));
   };
 
   const handleCreateCanvas = (name: string) => {
-    const id = `canvas-${Date.now()}`;
-    setCanvases((prev) => [
-      ...prev,
-      { id, name, workflowIds: [], connections: [], chainNames: {} },
-    ]);
-    setActiveCanvasId(id);
-    setSelectedId(null);
-    setSelectedIds(new Set());
-    setFocusedChainKey(null);
+    guard(() => {
+      const id = `canvas-${Date.now()}`;
+      setCanvases((prev) => [
+        ...prev,
+        { id, name, workflowIds: [], connections: [], chainNames: {} },
+      ]);
+      setActiveCanvasId(id);
+      setSelectedId(null);
+      setSelectedIds(new Set());
+      setFocusedChainKey(null);
+    });
   };
 
   const handleSelectFromSidebar = (id: string) => {
@@ -191,40 +175,29 @@ export default function Home() {
       : 0;
     const baseY = 400;
 
+    // Throws on failure — Landing catches it and shows an inline error.
+    // We deliberately do NOT place a fallback card on failure; that hides bugs.
     const generated = await generateFromAPI(description);
     const now = Date.now();
 
-    let newWorkflows: Workflow[];
-    let newConnections: Connection[] = [];
-    let firstId: string;
-
-    if (generated) {
-      // Map LLM-local ids → real ids
-      const idMap = new Map<string, string>();
-      generated.workflows.forEach((w, i) => {
-        idMap.set(w.id, `wf-${now}-${i}`);
-      });
-      newWorkflows = generated.workflows.map((w, i) => ({
-        ...w,
-        id: idMap.get(w.id)!,
-        x: baseX + i * 800,
-        y: baseY + (i % 2 === 0 ? 0 : 120),
-      }));
-      newConnections = generated.connections.flatMap<Connection>((c) => {
-        const from = idMap.get(c.from);
-        const to = idMap.get(c.to);
-        if (!from || !to) return [];
-        return [{ from, to, label: c.label ?? "Triggers" }];
-      });
-      firstId = newWorkflows[0].id;
-    } else {
-      const id = `wf-${now}`;
-      const wf = fallbackWorkflow(id, description);
-      wf.x = baseX;
-      wf.y = baseY;
-      newWorkflows = [wf];
-      firstId = id;
-    }
+    // Map LLM-local ids → real ids
+    const idMap = new Map<string, string>();
+    generated.workflows.forEach((w, i) => {
+      idMap.set(w.id, `wf-${now}-${i}`);
+    });
+    const newWorkflows: Workflow[] = generated.workflows.map((w, i) => ({
+      ...w,
+      id: idMap.get(w.id)!,
+      x: baseX + i * 800,
+      y: baseY + (i % 2 === 0 ? 0 : 120),
+    }));
+    const newConnections: Connection[] = generated.connections.flatMap<Connection>((c) => {
+      const from = idMap.get(c.from);
+      const to = idMap.get(c.to);
+      if (!from || !to) return [];
+      return [{ from, to, label: c.label }];
+    });
+    const firstId = newWorkflows[0].id;
 
     setWorkflows((prev) => [...prev, ...newWorkflows]);
     updateCanvas(targetCanvas.id, {
@@ -245,25 +218,29 @@ export default function Home() {
 
   const handleDelete = (id: string) => {
     if (activeReadOnly) return;
-    setWorkflows((prev) => prev.filter((w) => w.id !== id));
-    setCanvases((prev) =>
-      prev.map((c) => ({
-        ...c,
-        workflowIds: c.workflowIds.filter((wid) => wid !== id),
-        connections: c.connections.filter((conn) => conn.from !== id && conn.to !== id),
-      }))
-    );
-    if (selectedId === id) setSelectedId(null);
-    setSelectedIds((prev) => { const next = new Set(prev); next.delete(id); return next; });
-    if (connectMode?.fromId === id) setConnectMode(null);
+    guard(() => {
+      setWorkflows((prev) => prev.filter((w) => w.id !== id));
+      setCanvases((prev) =>
+        prev.map((c) => ({
+          ...c,
+          workflowIds: c.workflowIds.filter((wid) => wid !== id),
+          connections: c.connections.filter((conn) => conn.from !== id && conn.to !== id),
+        }))
+      );
+      if (selectedId === id) setSelectedId(null);
+      setSelectedIds((prev) => { const next = new Set(prev); next.delete(id); return next; });
+      if (connectMode?.fromId === id) setConnectMode(null);
+    });
   };
 
   // ── Connection handlers ───────────────────────────────────────────────────
 
   const handleStartChain = (fromId: string) => {
     if (activeReadOnly) return;
-    setConnectMode({ fromId });
-    setSelectedId(null);
+    guard(() => {
+      setConnectMode({ fromId });
+      setSelectedId(null);
+    });
   };
 
   const handleCreateConnection = (fromId: string, toId: string) => {
@@ -275,7 +252,7 @@ export default function Home() {
       updateActiveCanvas({
         connections: [
           ...activeCanvas.connections,
-          { from: fromId, to: toId, label: "Triggers" },
+          { from: fromId, to: toId },
         ],
       });
     }
@@ -305,8 +282,10 @@ export default function Home() {
 
   const handleUpdateChainName = (key: string, name: string) => {
     if (activeReadOnly) return;
-    updateActiveCanvas({
-      chainNames: { ...activeCanvas.chainNames, [key]: name },
+    guard(() => {
+      updateActiveCanvas({
+        chainNames: { ...activeCanvas.chainNames, [key]: name },
+      });
     });
   };
 
@@ -338,12 +317,24 @@ export default function Home() {
 
   // ── Render ────────────────────────────────────────────────────────────────
 
-  if (!started) {
+  // Avoid flashing the landing for already-signed-in users while we hydrate
+  // from localStorage on first paint.
+  if (!hydrated) return null;
+
+  if (!user && !started) {
     return (
-      <Landing
-        mode="fullscreen"
-        onMap={handleMap}
-        onSkip={() => setStarted(true)}
+      <LandingHero
+        onStartMapping={() => {
+          // Signed-in flow: open the new-workflow modal so user can describe
+          // their workflow immediately. This callback is replayed by the
+          // auth gate after a successful sign-in for unauth users.
+          setStarted(true);
+          setNewOpen(true);
+        }}
+        onBrowseExamples={() => {
+          setActiveCanvasId(EXAMPLES_CANVAS_ID);
+          setStarted(true);
+        }}
       />
     );
   }
