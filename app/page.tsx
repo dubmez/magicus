@@ -469,6 +469,7 @@ export default function Home() {
             onChain={handleStartChain}
             onDelete={handleDelete}
             onUpdate={handleUpdate}
+            onAutomate={() => setAutomateOpen(true)}
           />
         </div>
       </div>

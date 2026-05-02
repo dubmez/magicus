@@ -9,12 +9,19 @@ export const maxDuration = 60;
 // runtime has different streaming semantics and lower body limits.
 export const runtime = "nodejs";
 
+type GeneratedClassification =
+  | "automate"
+  | "human_review"
+  | "security_risk"
+  | "needs_standardisation";
+
 type GeneratedStep = {
   n: number;
   text: string;
   note?: string;
   owner?: string;
   timestamp?: number; // seconds into the recording
+  classification?: GeneratedClassification;
 };
 
 type GeneratedWorkflow = {
@@ -88,8 +95,12 @@ const responseSchema = {
           note: { type: Type.STRING, nullable: true },
           owner: { type: Type.STRING, nullable: true },
           timestamp: { type: Type.NUMBER, nullable: true },
+          classification: {
+            type: Type.STRING,
+            enum: ["automate", "human_review", "security_risk", "needs_standardisation"],
+          },
         },
-        required: ["n", "text"],
+        required: ["n", "text", "classification"],
       },
     },
     tools: { type: Type.ARRAY, items: { type: Type.STRING } },
@@ -114,6 +125,13 @@ CRITICAL RULES
 - "automationScore" (0-100) reflects how much of THIS workflow could be automated. Steps requiring human judgement or live conversation lower the score; rule-based or templated steps raise it.
 - "trigger" describes what kicks the workflow off. If the recording starts with the user explicitly opening something on a schedule or in response to an event, capture that. Otherwise leave it as { "type": "manual" }.
 - "why" is one or two sentences on the purpose of the workflow, drawn from narration if available — not a guess.
+
+For each step, set "classification" to one of:
+- "automate" — rule-based, safe for an agent to handle (parsing, scheduling, logging, sending templated messages)
+- "human_review" — judgment is required (evaluating fit, drafting custom outreach, handling exceptions)
+- "security_risk" — sensitive data or consequential actions (moving money, granting access, sending invoices, modifying production)
+- "needs_standardisation" — too variable across runs to automate reliably without further process work
+Be honest. Most workflows have a mix. If unsure between automate and human_review, prefer human_review.
 
 Return ONLY the JSON object. No prose around it.`;
 

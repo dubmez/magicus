@@ -2,6 +2,7 @@
 
 import { Zap, Link2, AlertCircle } from "lucide-react";
 import type { Step } from "@/lib/workflows";
+import { calculateAutomationScore } from "@/lib/workflows";
 
 type IOItem = { name: string; source: string };
 
@@ -68,7 +69,12 @@ export function ButterflyCard({
     ? "drop-shadow(0px 6px 28px rgba(59, 73, 83, 0.18))"
     : "drop-shadow(0px 4px 24px rgba(59, 73, 83, 0.12))";
 
-  const showAutomatable = (data.automationScore ?? 0) >= 70;
+  // Score is derived from step classifications when present; falls back to
+  // any stored value (kept around for legacy workflows that haven't been
+  // classified yet).
+  const derivedScore = calculateAutomationScore(data.steps);
+  const effectiveScore = derivedScore > 0 ? derivedScore : (data.automationScore ?? 0);
+  const showAutomatable = effectiveScore >= 70;
   const steps = maxSteps ? data.steps.slice(0, maxSteps) : data.steps;
 
   return (

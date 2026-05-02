@@ -2,6 +2,14 @@ export type Theme = "sales" | "marketing" | "operations" | "finance";
 
 export type IOItem = { name: string; source: string };
 
+// Classification of a step's automation suitability. The user can override
+// the model's pick; the overall workflow score is derived from these values.
+export type StepClassification =
+  | "automate"
+  | "human_review"
+  | "security_risk"
+  | "needs_standardisation";
+
 export type Step = {
   n: number;
   text: string;
@@ -10,6 +18,67 @@ export type Step = {
   // When the step came from a screen recording, this holds a data URL
   // captured from the recording at the timestamp the model identified.
   screenshot?: string;
+  // The model classifies each step on first generation; the user can edit
+  // the classification, which both updates the badge and recomputes the
+  // workflow's overall automation score.
+  classification?: StepClassification;
+  classificationOverridden?: boolean;
+};
+
+const CLASSIFICATION_SCORES: Record<StepClassification, number> = {
+  automate: 100,
+  human_review: 50,
+  security_risk: 25,
+  needs_standardisation: 0,
+};
+
+// Compute the overall automation score from a workflow's classified steps.
+// Unclassified steps are excluded — better to skip them than to bake an
+// arbitrary default into the average.
+export function calculateAutomationScore(steps: Step[]): number {
+  const classified = steps.filter((s) => s.classification);
+  if (classified.length === 0) return 0;
+  const total = classified.reduce(
+    (sum, s) => sum + CLASSIFICATION_SCORES[s.classification!],
+    0
+  );
+  return Math.round(total / classified.length);
+}
+
+// UI metadata for each classification — colours used for tag pills, popover
+// dots, and the legend. Kept here so it's the single source of truth.
+export const CLASSIFICATION_META: Record<
+  StepClassification,
+  { label: string; description: string; bg: string; fg: string; dot: string }
+> = {
+  automate: {
+    label: "Automate",
+    description: "Rule-based, safe for an agent to handle",
+    bg: "#EBF4DD",
+    fg: "#547863",
+    dot: "#547863",
+  },
+  human_review: {
+    label: "Human review",
+    description: "Judgment required — agent should pause",
+    bg: "#FEF3E2",
+    fg: "#C99461",
+    dot: "#C99461",
+  },
+  security_risk: {
+    label: "Security risk",
+    description: "Sensitive data or consequential action",
+    bg: "#FEF3E2",
+    fg: "#B5894C",
+    dot: "#B5894C",
+  },
+  needs_standardisation: {
+    label: "Needs standardisation",
+    description: "Too variable to automate reliably",
+    bg: "#F1EFE8",
+    fg: "#888780",
+    dot: "#888780",
+  },
 };
 
 export type Trigger = {
@@ -122,17 +191,17 @@ export const initialWorkflows: Workflow[] = [
       { name: "ICP criteria", source: "Notion" },
     ],
     steps: [
-      { n: 1, text: "Receive inbound lead" },
-      { n: 2, text: "Score against ICP", note: "If score > 7, proceed", owner: "Rev Ops" },
-      { n: 3, text: "Send personalised outreach", owner: "Sales lead" },
-      { n: 4, text: "Log to CRM" },
+      { n: 1, text: "Receive inbound lead", classification: "automate" },
+      { n: 2, text: "Score against ICP", note: "If score > 7, proceed", owner: "Rev Ops", classification: "automate" },
+      { n: 3, text: "Send personalised outreach", owner: "Sales lead", classification: "human_review" },
+      { n: 4, text: "Log to CRM", classification: "automate" },
     ],
     outputs: [
       { name: "Qualified lead record", source: "HubSpot" },
       { name: "Follow-up sent", source: "Gmail" },
     ],
     tools: ["HubSpot", "Gmail", "Notion"],
-    automationScore: 78,
+    automationScore: 0,
     automationRationale: "Scoring + outreach are rule-based; only edge cases need a human.",
     x: 0,
     y: 0,
@@ -148,17 +217,17 @@ export const initialWorkflows: Workflow[] = [
       { name: "Discovery script", source: "Notion" },
     ],
     steps: [
-      { n: 1, text: "Schedule call" },
-      { n: 2, text: "Run discovery", note: "If budget confirmed, advance", owner: "AE" },
-      { n: 3, text: "Capture pain points" },
-      { n: 4, text: "Update opportunity" },
+      { n: 1, text: "Schedule call", classification: "automate" },
+      { n: 2, text: "Run discovery", note: "If budget confirmed, advance", owner: "AE", classification: "human_review" },
+      { n: 3, text: "Capture pain points", classification: "human_review" },
+      { n: 4, text: "Update opportunity", classification: "automate" },
     ],
     outputs: [
       { name: "Discovery notes", source: "HubSpot" },
       { name: "Call recording", source: "Gong" },
     ],
     tools: ["HubSpot", "Calendly", "Gong"],
-    automationScore: 42,
+    automationScore: 0,
     automationRationale: "Live conversation is human-led; only scheduling and logging are automatable.",
     x: 800,
     y: 120,
@@ -174,17 +243,17 @@ export const initialWorkflows: Workflow[] = [
       { name: "Pricing matrix", source: "Sheets" },
     ],
     steps: [
-      { n: 1, text: "Draft proposal" },
-      { n: 2, text: "Internal review", note: "If discount > 15%, escalate", owner: "Solutions" },
-      { n: 3, text: "Send to prospect" },
-      { n: 4, text: "Track open + reply" },
+      { n: 1, text: "Draft proposal", classification: "automate" },
+      { n: 2, text: "Internal review", note: "If discount > 15%, escalate", owner: "Solutions", classification: "human_review" },
+      { n: 3, text: "Send to prospect", classification: "automate" },
+      { n: 4, text: "Track open + reply", classification: "automate" },
     ],
     outputs: [
       { name: "Signed proposal link", source: "DocuSign" },
       { name: "Quote record", source: "HubSpot" },
     ],
     tools: ["DocuSign", "HubSpot", "Sheets"],
-    automationScore: 64,
+    automationScore: 0,
     automationRationale: "Drafting and routing automate well; pricing exceptions need a human.",
     x: 1600,
     y: 0,
@@ -200,17 +269,17 @@ export const initialWorkflows: Workflow[] = [
       { name: "Onboarding template", source: "Notion" },
     ],
     steps: [
-      { n: 1, text: "Mark deal closed-won" },
-      { n: 2, text: "Trigger invoice", note: "If annual, send PO request" },
-      { n: 3, text: "Kick off onboarding", owner: "CSM" },
-      { n: 4, text: "Schedule QBR" },
+      { n: 1, text: "Mark deal closed-won", classification: "automate" },
+      { n: 2, text: "Trigger invoice", note: "If annual, send PO request", classification: "automate" },
+      { n: 3, text: "Kick off onboarding", owner: "CSM", classification: "human_review" },
+      { n: 4, text: "Schedule QBR", classification: "automate" },
     ],
     outputs: [
       { name: "Customer record", source: "HubSpot" },
       { name: "Onboarding plan", source: "Notion" },
     ],
     tools: ["HubSpot", "Stripe", "Notion"],
-    automationScore: 81,
+    automationScore: 0,
     automationRationale: "Closed-won triggers, invoicing, and template kickoff are all rules-based.",
     x: 2400,
     y: 120,
@@ -226,16 +295,16 @@ export const initialWorkflows: Workflow[] = [
       { name: "Subscriber list", source: "Mailchimp" },
     ],
     steps: [
-      { n: 1, text: "Compile stories", owner: "Content lead" },
-      { n: 2, text: "Draft newsletter", note: "If long-form > 600 words, split" },
-      { n: 3, text: "Schedule send" },
+      { n: 1, text: "Compile stories", owner: "Content lead", classification: "human_review" },
+      { n: 2, text: "Draft newsletter", note: "If long-form > 600 words, split", classification: "automate" },
+      { n: 3, text: "Schedule send", classification: "automate" },
     ],
     outputs: [
       { name: "Send report", source: "Mailchimp" },
       { name: "Engagement log", source: "Sheets" },
     ],
     tools: ["Mailchimp", "Notion", "Sheets"],
-    automationScore: 88,
+    automationScore: 0,
     automationRationale: "Recurring schedule, templated layout, and reporting are highly automatable.",
     x: 200,
     y: 700,
@@ -251,16 +320,16 @@ export const initialWorkflows: Workflow[] = [
       { name: "Style guide", source: "Notion" },
     ],
     steps: [
-      { n: 1, text: "Editorial review", owner: "Editor" },
-      { n: 2, text: "Run SEO check", note: "If score < 80, revise" },
-      { n: 3, text: "Publish to CMS" },
+      { n: 1, text: "Editorial review", owner: "Editor", classification: "human_review" },
+      { n: 2, text: "Run SEO check", note: "If score < 80, revise", classification: "automate" },
+      { n: 3, text: "Publish to CMS", classification: "automate" },
     ],
     outputs: [
       { name: "Live article", source: "Webflow" },
       { name: "Social cards", source: "Buffer" },
     ],
     tools: ["Webflow", "Buffer", "Google Docs"],
-    automationScore: 58,
+    automationScore: 0,
     automationRationale: "Editorial judgement is human; SEO checks and publishing automate.",
     x: 1100,
     y: 800,
@@ -276,17 +345,17 @@ export const initialWorkflows: Workflow[] = [
       { name: "Compliance checklist", source: "Notion" },
     ],
     steps: [
-      { n: 1, text: "Verify documents", owner: "Ops manager" },
-      { n: 2, text: "Set up payment", note: "If foreign vendor, add tax form" },
-      { n: 3, text: "Provision access" },
+      { n: 1, text: "Verify documents", owner: "Ops manager", classification: "human_review" },
+      { n: 2, text: "Set up payment", note: "If foreign vendor, add tax form", classification: "security_risk" },
+      { n: 3, text: "Provision access", classification: "security_risk" },
     ],
     outputs: [
       { name: "Vendor record", source: "Airtable" },
       { name: "Payment profile", source: "Bill.com" },
     ],
     tools: ["Airtable", "Bill.com", "Notion"],
-    automationScore: 36,
-    automationRationale: "Document verification needs human review; only intake and provisioning automate.",
+    automationScore: 0,
+    automationRationale: "Document verification needs human review; payment + access provisioning are sensitive actions.",
     x: 2000,
     y: 700,
   },
@@ -301,17 +370,17 @@ export const initialWorkflows: Workflow[] = [
       { name: "Approval matrix", source: "Sheets" },
     ],
     steps: [
-      { n: 1, text: "Parse invoice fields" },
-      { n: 2, text: "Route for approval", note: "If > $5k, dual approval", owner: "Finance ops" },
-      { n: 3, text: "Schedule payment" },
+      { n: 1, text: "Parse invoice fields", classification: "automate" },
+      { n: 2, text: "Route for approval", note: "If > $5k, dual approval", owner: "Finance ops", classification: "human_review" },
+      { n: 3, text: "Schedule payment", classification: "security_risk" },
     ],
     outputs: [
       { name: "Approved invoice", source: "QuickBooks" },
       { name: "Payment scheduled", source: "Bill.com" },
     ],
     tools: ["QuickBooks", "Bill.com", "Sheets"],
-    automationScore: 74,
-    automationRationale: "Parsing, routing rules, and scheduling are all automatable; humans only approve.",
+    automationScore: 0,
+    automationRationale: "Parsing automates cleanly; approval needs judgement; scheduling payments is consequential.",
     x: 2900,
     y: 800,
   },

@@ -8,6 +8,7 @@ import {
   computeChains,
   chainKey,
   inferChainName,
+  calculateAutomationScore,
 } from "@/lib/workflows";
 
 const dmSerif = { fontFamily: "var(--font-dm-serif), serif", fontStyle: "italic" as const };
@@ -223,7 +224,9 @@ function WorkflowRow({
   shared: boolean;
   onSelect: () => void;
 }) {
-  const automatable = workflow.automationScore >= 70;
+  const derived = calculateAutomationScore(workflow.steps);
+  const score = derived > 0 ? derived : workflow.automationScore;
+  const automatable = score >= 70;
   return (
     <button
       onClick={onSelect}

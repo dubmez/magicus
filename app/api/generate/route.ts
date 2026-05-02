@@ -19,12 +19,24 @@ Rules:
 6. When generating a chain, the FIRST workflow keeps its real trigger (schedule/event/manual). Downstream workflows in the chain MUST have trigger.type = "chained" and no description, since the connection itself is the trigger. Use the connection's "label" to describe the handoff (e.g. "Lead qualified", "Draft approved").
 7. Theme must be one of: sales, marketing, operations, finance. Pick based on the workflow's domain.
 8. automationScore is a 0-100 estimate of how much of this workflow could realistically be automated. Be honest — work that requires human judgement should score lower.
+9. For each step, set "classification" to one of:
+   - "automate" — rule-based, safe for an agent to handle (e.g. parsing, scheduling, logging, sending templated messages)
+   - "human_review" — judgment is required (e.g. evaluating fit, drafting custom outreach, exceptions)
+   - "security_risk" — sensitive data or consequential actions (e.g. moving money, granting access, sending invoices)
+   - "needs_standardisation" — too variable across runs to automate reliably without further process work
+   Be honest. Most workflows have a mix. If unsure between automate and human_review, prefer human_review.
 
 Use the generate_workflows tool to return your output. Do not include any prose outside the tool call.`;
 
 type GeneratedTrigger =
   | { type: "schedule" | "event" | "manual" | "chained"; description?: string }
   | null;
+
+type GeneratedClassification =
+  | "automate"
+  | "human_review"
+  | "security_risk"
+  | "needs_standardisation";
 
 type GeneratedWorkflow = {
   id: string;
@@ -33,7 +45,13 @@ type GeneratedWorkflow = {
   trigger: GeneratedTrigger;
   why: string;
   inputs: { name: string; source: string }[];
-  steps: { n: number; text: string; note?: string; owner?: string }[];
+  steps: {
+    n: number;
+    text: string;
+    note?: string;
+    owner?: string;
+    classification?: GeneratedClassification;
+  }[];
   outputs: { name: string; source: string }[];
   tools: string[];
   automationScore: number;
@@ -111,8 +129,14 @@ const tool = {
                   text: { type: "string", description: "Verbatim from the user when possible." },
                   note: { type: "string", description: "Conditional or branching detail (e.g. 'If discount > 15%, escalate'). Omit when absent." },
                   owner: { type: "string", description: "Person or team responsible. Omit if the user didn't say." },
+                  classification: {
+                    type: "string",
+                    enum: ["automate", "human_review", "security_risk", "needs_standardisation"],
+                    description:
+                      "How appropriate this step is for an autonomous agent. See the system prompt for definitions.",
+                  },
                 },
-                required: ["n", "text"],
+                required: ["n", "text", "classification"],
               },
             },
             outputs: {
