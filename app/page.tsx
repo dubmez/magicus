@@ -9,6 +9,7 @@ import { ExportModal } from "./components/export-modal";
 import { AutomateModal } from "./components/automate-modal";
 import { Landing } from "./components/landing";
 import { LandingHero } from "./components/landing-hero";
+import { RecordingFlow, type RecordedWorkflow } from "./components/recording-flow";
 import { type Workflow, type Canvas as CanvasType, type Connection, EXAMPLES_CANVAS_ID } from "@/lib/workflows";
 import { useWorkflows } from "@/lib/use-workflows";
 import { workflowToMarkdown, allWorkflowsToMarkdown } from "@/lib/markdown";
@@ -47,12 +48,6 @@ export default function Home() {
   const { user, hydrated } = useAuth();
   const guard = useRequireAuth();
 
-  // After a sign-out, drop the user back to the landing hero. They likely
-  // intended to leave the workspace, not stare at someone else's canvas.
-  useEffect(() => {
-    if (hydrated && !user) setStarted(false);
-  }, [hydrated, user]);
-
   const [started, setStarted] = useState(false);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
@@ -62,6 +57,21 @@ export default function Home() {
   const [newOpen, setNewOpen] = useState(false);
   const [exportTarget, setExportTarget] = useState<"all" | { id: string } | null>(null);
   const [automateOpen, setAutomateOpen] = useState(false);
+  const [recordingOpen, setRecordingOpen] = useState(false);
+  const [toast, setToast] = useState<string | null>(null);
+
+  // After a sign-out, drop the user back to the landing hero. They likely
+  // intended to leave the workspace, not stare at someone else's canvas.
+  useEffect(() => {
+    if (hydrated && !user) setStarted(false);
+  }, [hydrated, user]);
+
+  // Auto-dismiss the success toast after 3s.
+  useEffect(() => {
+    if (!toast) return;
+    const t = setTimeout(() => setToast(null), 3000);
+    return () => clearTimeout(t);
+  }, [toast]);
 
   const activeReadOnly = !!activeCanvas?.readOnly;
 
@@ -159,6 +169,56 @@ export default function Home() {
   };
 
   // ── Workflow CRUD ─────────────────────────────────────────────────────────
+
+  // Adds a structured workflow object directly to the active canvas — used by
+  // the recording flow which already has a workflow object from Gemini and
+  // skips the description → API roundtrip.
+  const addRecordedWorkflow = useCallback(
+    (rec: RecordedWorkflow) => {
+      let targetCanvas = activeCanvas;
+      if (!targetCanvas || targetCanvas.readOnly) {
+        targetCanvas = canvases.find((c) => !c.readOnly) ?? targetCanvas;
+        if (targetCanvas) setActiveCanvasId(targetCanvas.id);
+      }
+      if (!targetCanvas) return;
+
+      const targetWorkflows = workflows.filter((w) => targetCanvas!.workflowIds.includes(w.id));
+      const baseX = targetWorkflows.length > 0
+        ? Math.max(...targetWorkflows.map((w) => w.x)) + 800
+        : 0;
+      const baseY = 400;
+      const now = Date.now();
+      const id = `wf-${now}`;
+      const wf: Workflow = {
+        id,
+        theme: rec.theme,
+        name: rec.name,
+        trigger: rec.trigger,
+        why: rec.why,
+        inputs: rec.inputs,
+        steps: rec.steps,
+        outputs: rec.outputs,
+        tools: rec.tools,
+        automationScore: rec.automationScore,
+        automationRationale: rec.automationRationale,
+        x: baseX,
+        y: baseY,
+      };
+
+      setWorkflows((prev) => [...prev, wf]);
+      updateCanvas(targetCanvas.id, {
+        workflowIds: [...targetCanvas.workflowIds, id],
+      });
+      setSelectedId(id);
+      setSelectedIds(new Set());
+      setFocusId(id + ":" + now);
+      setStarted(true);
+      setRecordingOpen(false);
+      setNewOpen(false);
+      setToast("Workflow mapped from your recording");
+    },
+    [activeCanvas, canvases, workflows, setWorkflows, setCanvases, setActiveCanvasId, updateCanvas]
+  );
 
   const handleMap = async (description: string) => {
     // Never add new workflows to a read-only canvas — switch to the editable one
@@ -321,6 +381,18 @@ export default function Home() {
   // from localStorage on first paint.
   if (!hydrated) return null;
 
+  // Recording flow takes over the entire viewport when active — its own
+  // chrome (header, prep/record/review/processing screens) replaces the
+  // canvas while it's running.
+  if (recordingOpen) {
+    return (
+      <RecordingFlow
+        onSuccess={(wf) => addRecordedWorkflow(wf)}
+        onCancel={() => setRecordingOpen(false)}
+      />
+    );
+  }
+
   if (!user && !started) {
     return (
       <LandingHero
@@ -332,6 +404,7 @@ export default function Home() {
           setActiveCanvasId(EXAMPLES_CANVAS_ID);
           setStarted(true);
         }}
+        onRecord={() => setRecordingOpen(true)}
       />
     );
   }
@@ -405,6 +478,10 @@ export default function Home() {
           mode="modal"
           onMap={handleMap}
           onCancel={() => setNewOpen(false)}
+          onRecord={() => {
+            setNewOpen(false);
+            setRecordingOpen(true);
+          }}
         />
       )}
 
@@ -421,6 +498,30 @@ export default function Home() {
         connections={activeCanvas?.connections ?? []}
         onClose={() => setAutomateOpen(false)}
       />
+
+      {/* Success toast — auto-dismisses after 3s via the effect above. */}
+      {toast && (
+        <div
+          style={{
+            position: "fixed",
+            top: 16,
+            left: "50%",
+            transform: "translateX(-50%)",
+            background: "#547863",
+            color: "#EBF4DD",
+            padding: "10px 18px",
+            borderRadius: 999,
+            fontSize: 13,
+            fontWeight: 500,
+            boxShadow: "0 8px 32px rgba(59, 73, 83, 0.20)",
+            zIndex: 200,
+            fontFamily: "var(--font-dm-sans), sans-serif",
+          }}
+          role="status"
+        >
+          {toast}
+        </div>
+      )}
     </div>
   );
 }

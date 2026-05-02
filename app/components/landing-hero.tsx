@@ -105,9 +105,11 @@ function HeroHeader() {
 function HeroSection({
   onMap,
   onBrowseExamples,
+  onRecord,
 }: {
   onMap: (description: string) => Promise<void>;
   onBrowseExamples: () => void;
+  onRecord: () => void;
 }) {
   return (
     <section
@@ -172,7 +174,7 @@ function HeroSection({
           blueprint. You bring the magic.
         </p>
 
-        <PromptBox onMap={onMap} />
+        <PromptBox onMap={onMap} onRecord={onRecord} />
 
         <button
           onClick={onBrowseExamples}
@@ -198,7 +200,13 @@ function HeroSection({
 type Mode = "describe" | "voice" | "record";
 type Stage = "idle" | "generating";
 
-function PromptBox({ onMap }: { onMap: (description: string) => Promise<void> }) {
+function PromptBox({
+  onMap,
+  onRecord,
+}: {
+  onMap: (description: string) => Promise<void>;
+  onRecord: () => void;
+}) {
   const [text, setText] = useState("");
   const [mode, setMode] = useState<Mode>("describe");
   const [stage, setStage] = useState<Stage>("idle");
@@ -207,7 +215,6 @@ function PromptBox({ onMap }: { onMap: (description: string) => Promise<void> })
   const [isRecording, setIsRecording] = useState(false);
   const [permissionDenied, setPermissionDenied] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
-  const [recordHover, setRecordHover] = useState(false);
   const [interimTranscript, setInterimTranscript] = useState("");
 
   const taRef = useRef<HTMLTextAreaElement>(null);
@@ -304,7 +311,9 @@ function PromptBox({ onMap }: { onMap: (description: string) => Promise<void> })
     if (mode === "voice" && isRecording) stopRecording();
 
     if (next === "record") {
-      // Stub — see tooltip on hover. Don't switch the mode; user stays put.
+      // Record launches the dedicated full-page recording flow. Auth-gated:
+      // unauthed users sign in first, then drop straight into the prep screen.
+      guard(() => onRecord());
       return;
     }
 
@@ -471,40 +480,12 @@ function PromptBox({ onMap }: { onMap: (description: string) => Promise<void> })
               onClick={() => switchMode("voice")}
             />
           )}
-          {/* Record — stub with tooltip */}
-          <div
-            style={{ position: "relative" }}
-            onMouseEnter={() => setRecordHover(true)}
-            onMouseLeave={() => setRecordHover(false)}
-          >
-            <ModePill
-              label="Record"
-              icon={<Video size={12} />}
-              active={false}
-              onClick={() => switchMode("record")}
-            />
-            {recordHover && (
-              <div
-                role="tooltip"
-                style={{
-                  position: "absolute",
-                  bottom: "calc(100% + 6px)",
-                  left: "50%",
-                  transform: "translateX(-50%)",
-                  background: "#3B4953",
-                  color: "#EBF4DD",
-                  fontSize: 11,
-                  padding: "4px 8px",
-                  borderRadius: 6,
-                  whiteSpace: "nowrap",
-                  pointerEvents: "none",
-                  zIndex: 5,
-                }}
-              >
-                Screen recording coming soon
-              </div>
-            )}
-          </div>
+          <ModePill
+            label="Record"
+            icon={<Video size={12} />}
+            active={false}
+            onClick={() => switchMode("record")}
+          />
         </div>
 
         <button
@@ -759,9 +740,11 @@ function SocialProof() {
 export function LandingHero({
   onMap,
   onBrowseExamples,
+  onRecord,
 }: {
   onMap: (description: string) => Promise<void>;
   onBrowseExamples: () => void;
+  onRecord: () => void;
 }) {
   return (
     <div className="min-h-screen w-full flex flex-col" style={{ ...dmSans }}>
@@ -770,7 +753,11 @@ export function LandingHero({
         style={{ minHeight: "100vh" }}
       >
         <HeroHeader />
-        <HeroSection onMap={onMap} onBrowseExamples={onBrowseExamples} />
+        <HeroSection
+          onMap={onMap}
+          onBrowseExamples={onBrowseExamples}
+          onRecord={onRecord}
+        />
       </div>
       <ButterflySection />
       <PillarsSection />

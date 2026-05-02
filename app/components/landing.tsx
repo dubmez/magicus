@@ -46,11 +46,13 @@ export function Landing({
   onMap,
   onCancel,
   onSkip,
+  onRecord,
 }: {
   mode: "fullscreen" | "modal";
   onMap: (description: string) => void | Promise<void>;
   onCancel?: () => void;
   onSkip?: () => void;
+  onRecord?: () => void;
 }) {
   const [stage, setStage] = useState<Stage>("idle");
   const [text, setText] = useState("");
@@ -300,8 +302,32 @@ export function Landing({
         className="flex items-center justify-between"
         style={{ marginTop: 18 }}
       >
-        <div style={{ fontSize: 12, color: "#90AB8B" }}>
-          {stage === "idle" && "Tip: ⌘/Ctrl + Enter to map"}
+        <div className="flex items-center gap-3" style={{ fontSize: 12, color: "#90AB8B" }}>
+          {stage === "idle" && (
+            <>
+              <span>Tip: ⌘/Ctrl + Enter to map</span>
+              {onRecord && (
+                <>
+                  <span style={{ color: "#EBF4DD" }}>·</span>
+                  <button
+                    onClick={onRecord}
+                    className="hover:underline"
+                    style={{
+                      background: "transparent",
+                      color: "#547863",
+                      border: "none",
+                      padding: 0,
+                      fontSize: 12,
+                      cursor: "pointer",
+                      fontFamily: "inherit",
+                    }}
+                  >
+                    Record screen instead
+                  </button>
+                </>
+              )}
+            </>
+          )}
           {stage === "generating" && "Mapping into a butterfly…"}
         </div>
         <div className="flex items-center gap-2">
