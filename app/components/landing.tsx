@@ -86,6 +86,14 @@ export function Landing({
     return () => window.removeEventListener("keydown", onKey);
   }, [mode, onCancel]);
 
+  // Lock body scroll while the modal variant is open.
+  useEffect(() => {
+    if (mode !== "modal") return;
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => { document.body.style.overflow = prev; };
+  }, [mode]);
+
   const stopRecording = () => {
     recognitionRef.current?.stop();
   };

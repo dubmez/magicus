@@ -412,6 +412,14 @@ export function AutomateModal({
     return () => window.removeEventListener("keydown", onKey);
   }, [open, onClose]);
 
+  // Lock body scroll so the page doesn't drift behind the dimmed backdrop.
+  useEffect(() => {
+    if (!open) return;
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => { document.body.style.overflow = prev; };
+  }, [open]);
+
   if (!open || workflows.length === 0) return null;
 
   const title =

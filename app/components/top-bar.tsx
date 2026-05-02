@@ -133,7 +133,7 @@ export function TopBar({
 }) {
   return (
     <div
-      className="flex items-center justify-between px-6"
+      className="flex items-center justify-between px-4 md:px-6 gap-2"
       style={{
         height: 60,
         background: "#FFFFFF",
@@ -142,7 +142,7 @@ export function TopBar({
         flexShrink: 0,
       }}
     >
-      <div className="flex items-center gap-3">
+      <div className="flex items-center gap-3 min-w-0">
         <div
           style={{
             width: 28,
@@ -156,11 +156,13 @@ export function TopBar({
             fontFamily: "var(--font-dm-serif), serif",
             fontStyle: "italic",
             fontSize: 16,
+            flexShrink: 0,
           }}
         >
           m
         </div>
         <div
+          className="hidden sm:block"
           style={{
             fontFamily: "var(--font-dm-serif), serif",
             fontStyle: "italic",
@@ -173,7 +175,7 @@ export function TopBar({
         </div>
       </div>
 
-      <div className="flex items-center gap-2">
+      <div className="flex items-center gap-1.5 md:gap-2">
         <button
           onClick={onNew}
           className="flex items-center gap-2 transition-colors hover:bg-[#EBF4DD]"
@@ -185,29 +187,36 @@ export function TopBar({
             fontSize: 13,
             fontWeight: 500,
             border: "1px solid #EBF4DD",
+            whiteSpace: "nowrap",
+            flexShrink: 0,
           }}
+          title="New workflow"
+          aria-label="New workflow"
         >
           <Plus size={14} />
-          New workflow
+          <span className="hidden md:inline">New workflow</span>
         </button>
         <button
           onClick={onAutomate}
           disabled={automateCount === 0}
-          title={automateCount === 0 ? "Select a workflow first" : undefined}
+          title={automateCount === 0 ? "Select a workflow first" : "Automate it"}
+          aria-label="Automate it"
           className="flex items-center gap-2 transition-all hover:opacity-90"
           style={{
             background: automateCount > 0 ? "#547863" : "#EBF4DD",
             color: automateCount > 0 ? "#EBF4DD" : "#90AB8B",
-            padding: "8px 16px",
+            padding: "8px 14px",
             borderRadius: 999,
             fontSize: 13,
             fontWeight: 500,
             cursor: automateCount === 0 ? "not-allowed" : "pointer",
             transition: "background 0.15s",
+            whiteSpace: "nowrap",
+            flexShrink: 0,
           }}
         >
           <Zap size={14} fill={automateCount > 0 ? "#EBF4DD" : "#90AB8B"} strokeWidth={0} />
-          Automate it
+          <span className="hidden md:inline">Automate it</span>
           {automateCount > 0 && (
             <span
               style={{
@@ -229,14 +238,18 @@ export function TopBar({
           style={{
             background: "#3B4953",
             color: "#EBF4DD",
-            padding: "8px 16px",
+            padding: "8px 14px",
             borderRadius: 999,
             fontSize: 13,
             fontWeight: 500,
+            whiteSpace: "nowrap",
+            flexShrink: 0,
           }}
+          title="Export .md"
+          aria-label="Export markdown"
         >
           <Download size={14} />
-          Export .md
+          <span className="hidden md:inline">Export .md</span>
         </button>
         <div style={{ width: 8 }} />
         <UserMenu />

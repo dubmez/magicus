@@ -923,8 +923,10 @@ export function DetailPanel({
   const open = !!workflow;
   return (
     <div
+      // Full-width on mobile so a workflow's details aren't clipped at narrow
+      // viewports; fixed 440px on md+ as the side panel users know.
+      className={open ? "w-full md:w-[440px]" : "w-0"}
       style={{
-        width: open ? 440 : 0,
         flexShrink: 0,
         height: "100%",
         background: "#FFFFFF",
@@ -1262,9 +1264,9 @@ export function DetailPanel({
           <div
             style={{
               borderTop: "1px solid #EBF4DD",
-              padding: "12px 24px",
+              padding: "12px 20px",
               display: "flex",
-              gap: 8,
+              gap: 6,
               background: "#FFFFFF",
               flexShrink: 0,
               alignItems: "center",
@@ -1277,12 +1279,14 @@ export function DetailPanel({
                 style={{
                   background: "#3B4953",
                   color: "#EBF4DD",
-                  padding: "10px 16px",
+                  padding: "10px 14px",
                   borderRadius: 999,
                   fontSize: 13,
                   fontWeight: 500,
                   border: "none",
                   cursor: "pointer",
+                  whiteSpace: "nowrap",
+                  flexShrink: 0,
                 }}
               >
                 <Zap size={13} fill="#EBF4DD" strokeWidth={0} />
@@ -1292,39 +1296,42 @@ export function DetailPanel({
             {!effectiveReadOnly && (
               <button
                 onClick={() => onChain(workflow.id)}
-                className="flex items-center gap-2 hover:bg-[#EBF4DD] transition-colors"
+                className="flex items-center justify-center hover:bg-[#EBF4DD] transition-colors"
                 style={{
                   background: "transparent",
                   color: "#3B4953",
-                  padding: "10px 14px",
+                  width: 36,
+                  height: 36,
+                  padding: 0,
                   borderRadius: 999,
-                  fontSize: 13,
-                  fontWeight: 500,
                   border: "1px solid #EBF4DD",
                   cursor: "pointer",
+                  flexShrink: 0,
                 }}
                 title="Chain this workflow into another"
+                aria-label="Chain"
               >
-                <Link2 size={13} />
-                Chain
+                <Link2 size={14} />
               </button>
             )}
             <button
               onClick={() => onExport(workflow.id)}
-              className="flex items-center gap-2 hover:bg-[#EBF4DD] transition-colors"
+              className="flex items-center justify-center hover:bg-[#EBF4DD] transition-colors"
               style={{
                 background: "transparent",
                 color: "#3B4953",
-                padding: "10px 14px",
+                width: 36,
+                height: 36,
+                padding: 0,
                 borderRadius: 999,
-                fontSize: 13,
-                fontWeight: 500,
                 border: "1px solid #EBF4DD",
                 cursor: "pointer",
+                flexShrink: 0,
               }}
+              title="Export as Markdown"
+              aria-label="Export markdown"
             >
-              <Download size={13} />
-              Export .md
+              <Download size={14} />
             </button>
             <div style={{ flex: 1 }} />
             {!effectiveReadOnly && (
@@ -1336,8 +1343,9 @@ export function DetailPanel({
                   if (ok) onDelete(workflow.id);
                 }}
                 className="hover:bg-[#EBF4DD] rounded-md p-2"
-                style={{ color: "#90AB8B" }}
+                style={{ color: "#90AB8B", flexShrink: 0 }}
                 aria-label="Delete workflow"
+                title="Delete workflow"
               >
                 <Trash2 size={14} />
               </button>

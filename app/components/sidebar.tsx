@@ -303,7 +303,9 @@ export function Sidebar({
 }) {
   return (
     <div
-      className="h-full overflow-y-auto flex flex-col"
+      // Hidden on small screens — canvas + detail panel take priority on
+      // mobile. Power users on desktop get the full sidebar.
+      className="hidden md:flex h-full overflow-y-auto flex-col"
       style={{
         width: 260,
         background: "#FFFFFF",

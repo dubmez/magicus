@@ -30,6 +30,15 @@ export function AuthGate() {
     return () => window.removeEventListener("keydown", onKey);
   }, [gateOpen, closeGate]);
 
+  // Lock body scroll while the gate is open so the page underneath can't
+  // shift around behind the dimmed backdrop.
+  useEffect(() => {
+    if (!gateOpen) return;
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => { document.body.style.overflow = prev; };
+  }, [gateOpen]);
+
   if (!gateOpen) return null;
 
   const handleSuccess = (resp: CredentialResponse) => {

@@ -66,11 +66,13 @@ export const CLASSIFICATION_META: Record<
     dot: "#C99461",
   },
   security_risk: {
+    // Distinct red palette so this doesn't blend with human_review's amber.
+    // Reuses the same red we use for inline error banners elsewhere.
     label: "Security risk",
     description: "Sensitive data or consequential action",
-    bg: "#FEF3E2",
-    fg: "#B5894C",
-    dot: "#B5894C",
+    bg: "#FDECEC",
+    fg: "#8B2A2A",
+    dot: "#C0392B",
   },
   needs_standardisation: {
     label: "Needs standardisation",
