@@ -2,7 +2,15 @@ export type Theme = "sales" | "marketing" | "operations" | "finance";
 
 export type IOItem = { name: string; source: string };
 
-export type Step = { n: number; text: string; note?: string; owner?: string };
+export type Step = {
+  n: number;
+  text: string;
+  note?: string;
+  owner?: string;
+  // When the step came from a screen recording, this holds a data URL
+  // captured from the recording at the timestamp the model identified.
+  screenshot?: string;
+};
 
 export type Trigger = {
   type: "schedule" | "event" | "manual" | "chained";

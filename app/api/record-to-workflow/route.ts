@@ -1,29 +1,29 @@
 import { type NextRequest, NextResponse } from "next/server";
+import { GoogleGenAI, createPartFromUri, createUserContent, Type } from "@google/genai";
 
-// Phase A stub: returns a plausible mock workflow so the UI flow can be
-// exercised end-to-end without a Gemini key. Phase B will replace the body
-// of this handler with a real Gemini 2.5 Flash File API call.
-//
-// Request: { transcript: string, durationSeconds: number, mimeType: string }
-//   (the actual video blob is not yet uploaded — Phase B will use multipart
-//    or a Vercel Blob handoff so we don't bloat the function body)
-// Response: { workflow: GeneratedWorkflow } | { error: string }
+// Vercel function config: Gemini calls for video can run 15-30s+, so bump the
+// max duration. (Hobby tier ceiling is 60s; we ask for 60.)
+export const maxDuration = 60;
+
+// Force Node.js runtime — we read FormData with a binary file in it; Edge
+// runtime has different streaming semantics and lower body limits.
+export const runtime = "nodejs";
 
 type GeneratedStep = {
   n: number;
   text: string;
   note?: string;
   owner?: string;
-  // Optional timestamp (seconds into the video) — Phase B has Gemini return
-  // these so the client can extract a screenshot per step.
-  timestamp?: number;
+  timestamp?: number; // seconds into the recording
 };
 
 type GeneratedWorkflow = {
   id: string;
   theme: "sales" | "marketing" | "operations" | "finance";
   name: string;
-  trigger: { type: "schedule" | "event" | "manual" | "chained"; description?: string } | null;
+  trigger:
+    | { type: "schedule" | "event" | "manual" | "chained"; description?: string }
+    | null;
   why: string;
   inputs: { name: string; source: string }[];
   steps: GeneratedStep[];
@@ -33,65 +33,223 @@ type GeneratedWorkflow = {
   automationRationale: string;
 };
 
+// Response schema — Gemini honours this and returns valid JSON we can parse
+// without regex'ing markdown fences out of the text.
+const responseSchema = {
+  type: Type.OBJECT,
+  properties: {
+    name: { type: Type.STRING },
+    theme: {
+      type: Type.STRING,
+      enum: ["sales", "marketing", "operations", "finance"],
+    },
+    trigger: {
+      type: Type.OBJECT,
+      nullable: true,
+      properties: {
+        type: {
+          type: Type.STRING,
+          enum: ["schedule", "event", "manual", "chained"],
+        },
+        description: { type: Type.STRING, nullable: true },
+      },
+      required: ["type"],
+    },
+    why: { type: Type.STRING },
+    inputs: {
+      type: Type.ARRAY,
+      items: {
+        type: Type.OBJECT,
+        properties: {
+          name: { type: Type.STRING },
+          source: { type: Type.STRING },
+        },
+        required: ["name", "source"],
+      },
+    },
+    outputs: {
+      type: Type.ARRAY,
+      items: {
+        type: Type.OBJECT,
+        properties: {
+          name: { type: Type.STRING },
+          source: { type: Type.STRING },
+        },
+        required: ["name", "source"],
+      },
+    },
+    steps: {
+      type: Type.ARRAY,
+      items: {
+        type: Type.OBJECT,
+        properties: {
+          n: { type: Type.INTEGER },
+          text: { type: Type.STRING },
+          note: { type: Type.STRING, nullable: true },
+          owner: { type: Type.STRING, nullable: true },
+          timestamp: { type: Type.NUMBER, nullable: true },
+        },
+        required: ["n", "text"],
+      },
+    },
+    tools: { type: Type.ARRAY, items: { type: Type.STRING } },
+    automationScore: { type: Type.INTEGER },
+    automationRationale: { type: Type.STRING },
+  },
+  required: [
+    "name", "theme", "trigger", "why", "inputs", "outputs",
+    "steps", "tools", "automationScore", "automationRationale",
+  ],
+};
+
+const SYSTEM_PROMPT = `You are watching a screen recording of a business workflow. The user narrated as they worked. Extract a structured workflow object.
+
+CRITICAL RULES
+- Use only what you observe in the video and hear in the narration. Do not invent steps, tools, or details not present in the recording.
+- Leave fields empty (empty strings, empty arrays, null) rather than guessing. It's better to miss a detail than to fabricate one.
+- Step text must be action-first and concise. Examples: "Click 'New post'", "Fill in the subject line", "Check eligibility in Stripe", "Open the Calendly dashboard".
+- For each step, set "timestamp" to the second in the video where that step is most clearly happening — we use this to pull a representative frame.
+- "tools" must be apps you actually saw or heard the user use, not your guesses about what they might use.
+- "theme" is the workflow's domain: sales, marketing, operations, or finance. Pick the closest fit.
+- "automationScore" (0-100) reflects how much of THIS workflow could be automated. Steps requiring human judgement or live conversation lower the score; rule-based or templated steps raise it.
+- "trigger" describes what kicks the workflow off. If the recording starts with the user explicitly opening something on a schedule or in response to an event, capture that. Otherwise leave it as { "type": "manual" }.
+- "why" is one or two sentences on the purpose of the workflow, drawn from narration if available — not a guess.
+
+Return ONLY the JSON object. No prose around it.`;
+
+// Wait until the uploaded file's state is ACTIVE — Gemini does some
+// processing on video uploads before they're queryable.
+async function waitForFileActive(
+  client: GoogleGenAI,
+  fileName: string,
+  timeoutMs = 50_000
+): Promise<void> {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    const f = await client.files.get({ name: fileName });
+    if (f.state === "ACTIVE") return;
+    if (f.state === "FAILED") throw new Error("File processing failed");
+    await new Promise((r) => setTimeout(r, 1500));
+  }
+  throw new Error("File processing timed out");
+}
+
 export async function POST(req: NextRequest) {
+  if (!process.env.GEMINI_API_KEY) {
+    return NextResponse.json(
+      { error: "Server is missing GEMINI_API_KEY." },
+      { status: 500 }
+    );
+  }
+
+  let video: File | null = null;
+  let transcript = "";
+  let durationSeconds = 0;
+  let mimeType = "video/webm";
+
   try {
-    const body = (await req.json()) as {
-      transcript?: string;
-      durationSeconds?: number;
-      mimeType?: string;
-    };
+    const form = await req.formData();
+    video = form.get("video") as File | null;
+    transcript = String(form.get("transcript") ?? "").trim();
+    durationSeconds = Number(form.get("durationSeconds") ?? 0);
+    mimeType = String(form.get("mimeType") ?? "video/webm");
+  } catch (err) {
+    console.error("[record-to-workflow] failed to parse FormData", err);
+    return NextResponse.json(
+      { error: "Could not read the upload." },
+      { status: 400 }
+    );
+  }
 
-    const transcript = (body.transcript ?? "").trim();
-    const duration = Number(body.durationSeconds ?? 0);
+  if (!video) {
+    return NextResponse.json(
+      { error: "No recording attached." },
+      { status: 400 }
+    );
+  }
+  if (durationSeconds < 15) {
+    return NextResponse.json(
+      { error: "Recording too short — please record at least 15 seconds." },
+      { status: 400 }
+    );
+  }
 
-    // Reject very short clips per spec — Gemini will struggle and the user
-    // gets a better experience seeing the explicit error than a vague output.
-    if (duration < 15) {
+  const client = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+
+  try {
+    // Upload the recording to Gemini's File API. This handles videos of any
+    // size up to the per-key file storage limit; inline base64 caps at ~20MB.
+    const uploaded = await client.files.upload({
+      file: video,
+      config: { mimeType },
+    });
+    if (!uploaded.name) {
+      throw new Error("Upload did not return a file name");
+    }
+    await waitForFileActive(client, uploaded.name);
+
+    // Build the user prompt. The transcript goes alongside the video so the
+    // model has both modalities to work from.
+    const userPromptParts: Array<{ text: string } | ReturnType<typeof createPartFromUri>> = [];
+    if (uploaded.uri && uploaded.mimeType) {
+      userPromptParts.push(createPartFromUri(uploaded.uri, uploaded.mimeType));
+    }
+    userPromptParts.push({
+      text:
+        SYSTEM_PROMPT +
+        "\n\n" +
+        (transcript
+          ? `User narration transcript:\n"""\n${transcript}\n"""`
+          : "(No narration was captured. Work from the video alone, and leave 'why' empty if you cannot tell why this workflow exists.)"),
+    });
+
+    const response = await client.models.generateContent({
+      model: "gemini-2.5-flash",
+      contents: createUserContent(userPromptParts),
+      config: {
+        responseMimeType: "application/json",
+        responseSchema,
+        // A bit of headroom for the structured response.
+        maxOutputTokens: 4000,
+      },
+    });
+
+    const text = response.text;
+    if (!text) throw new Error("Empty response from model");
+
+    let parsed: GeneratedWorkflow;
+    try {
+      parsed = JSON.parse(text) as GeneratedWorkflow;
+    } catch (err) {
+      console.error("[record-to-workflow] JSON parse failed", err, text.slice(0, 500));
       return NextResponse.json(
-        { error: "Recording too short — please record at least 15 seconds." },
-        { status: 400 }
+        { error: "Model response could not be parsed." },
+        { status: 502 }
       );
     }
 
-    // Simulate a realistic processing delay so the Processing screen has
-    // something to do. Real Gemini calls typically take 5–15 seconds for
-    // ~2-minute recordings.
-    await new Promise((resolve) => setTimeout(resolve, 4000));
+    // Sanity check the parsed shape — if Gemini returns something off-schema
+    // we surface the user-facing error rather than crash on the canvas.
+    if (
+      !parsed.name ||
+      !Array.isArray(parsed.steps) ||
+      parsed.steps.length === 0
+    ) {
+      return NextResponse.json(
+        { error: "Model returned an incomplete workflow." },
+        { status: 502 }
+      );
+    }
 
-    // Build a mock workflow that loosely reflects what the user said. We
-    // pick out a few words from the transcript so it doesn't look like
-    // a constant fixture.
-    const excerpt = transcript.slice(0, 60).trim();
-    const name = excerpt
-      ? `Workflow from recording${excerpt.length > 0 ? "" : ""}`
-      : "Workflow from recording";
+    // Renumber steps defensively in case the model misnumbered them.
+    parsed.steps = parsed.steps.map((s, i) => ({ ...s, n: i + 1 }));
 
-    const workflow: GeneratedWorkflow = {
-      id: "rec",
-      theme: "operations",
-      name,
-      trigger: { type: "manual", description: "Triggered from a screen recording" },
-      why: transcript.slice(0, 200) || "Captured from a screen recording. Edit me to add why this matters.",
-      inputs: [
-        { name: "Recording transcript", source: "Magicus" },
-      ],
-      steps: [
-        { n: 1, text: "Open the tool you were recording", timestamp: 2 },
-        { n: 2, text: "Perform the actions you narrated", timestamp: Math.max(8, duration / 3) },
-        { n: 3, text: "Confirm the result and close out", timestamp: Math.max(15, (duration * 2) / 3) },
-      ],
-      outputs: [
-        { name: "Outcome of the recorded process", source: "Your tool" },
-      ],
-      tools: [],
-      automationScore: 55,
-      automationRationale:
-        "Stubbed score — Phase B will use Gemini to score automation potential from the recording.",
-    };
+    // Add the id last so the client can use it as-is.
+    const workflow = { ...parsed, id: "rec" };
 
     return NextResponse.json({ workflow });
   } catch (err) {
-    console.error("[record-to-workflow] error", err);
+    console.error("[record-to-workflow] gemini error", err);
     return NextResponse.json(
       { error: "Failed to process recording." },
       { status: 500 }

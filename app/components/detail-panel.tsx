@@ -606,6 +606,21 @@ export function DetailPanel({
                         <X size={12} />
                       </button>
                     </div>
+                    {t.screenshot && (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img
+                        src={t.screenshot}
+                        alt={`Frame for step ${t.n}`}
+                        style={{
+                          width: "100%",
+                          height: "auto",
+                          marginTop: 10,
+                          borderRadius: 6,
+                          border: "1px solid #EBF4DD",
+                          display: "block",
+                        }}
+                      />
+                    )}
                   </li>
                 ))}
               </ol>

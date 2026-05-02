@@ -1225,14 +1225,18 @@ export function RecordingFlow({
     }
     setStage("processing");
     try {
+      // Upload as multipart so the binary doesn't go through base64-in-JSON
+      // (which inflates by ~33% and JSON-parses poorly server-side).
+      const fd = new FormData();
+      const ext = reviewMime.includes("mp4") ? "mp4" : "webm";
+      fd.append("video", reviewBlob, `recording.${ext}`);
+      fd.append("transcript", reviewTranscript);
+      fd.append("durationSeconds", String(reviewDuration));
+      fd.append("mimeType", reviewMime);
+
       const res = await fetch("/api/record-to-workflow", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          transcript: reviewTranscript,
-          durationSeconds: reviewDuration,
-          mimeType: reviewMime,
-        }),
+        body: fd,
       });
       if (!res.ok) {
         setStage("error");
@@ -1243,7 +1247,18 @@ export function RecordingFlow({
         setStage("error");
         return;
       }
-      onSuccess(data.workflow);
+
+      // For each step the model returned a timestamp for, pull a frame from
+      // the recording and attach it. Done client-side so we don't ship
+      // ~50 base64 images back from the server.
+      const enrichedSteps = await Promise.all(
+        data.workflow.steps.map(async (step) => {
+          if (typeof step.timestamp !== "number") return step;
+          const shot = await extractFrame(reviewBlob, step.timestamp).catch(() => null);
+          return shot ? { ...step, screenshot: shot } : step;
+        })
+      );
+      onSuccess({ ...data.workflow, steps: enrichedSteps });
     } catch {
       setStage("error");
     }
