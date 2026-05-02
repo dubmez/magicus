@@ -58,14 +58,12 @@ function initCanvases(): Canvas[] {
     return [{ ...myBusinessCanvas }, { ...examplesCanvas }];
   }
 
-  // Existing user — keep their canvases, ensure Examples canvas exists and is read-only
-  const out = [...stored];
-  const idx = out.findIndex((c) => c.id === EXAMPLES_CANVAS_ID);
-  if (idx === -1) {
-    out.push({ ...examplesCanvas });
-  } else if (!out[idx].readOnly) {
-    out[idx] = { ...out[idx], readOnly: true };
-  }
+  // Existing user — keep their personal canvases but always replace Examples
+  // with the current export. We manage that canvas, so updates to the seed
+  // data ship to existing users on next load without leaving stale ids
+  // around.
+  const out = stored.filter((c) => c.id !== EXAMPLES_CANVAS_ID);
+  out.push({ ...examplesCanvas });
   return out;
 }
 
