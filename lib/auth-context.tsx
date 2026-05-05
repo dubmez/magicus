@@ -10,7 +10,6 @@ import {
 } from "react";
 import type { Session, User as SupabaseUser } from "@supabase/supabase-js";
 import { supabaseBrowser } from "@/lib/supabase/client";
-import { storageBackend } from "@/lib/db";
 
 export type AuthUser = {
   id: string;
@@ -38,9 +37,9 @@ type AuthContextValue = {
 
 const AuthContext = createContext<AuthContextValue | null>(null);
 
-// Legacy localStorage key — read once on bootstrap when running on the
-// `local` storage backend so existing users don't appear signed-out after
-// the auth refactor. Cleared after migration completes.
+// Pre-Supabase auth stored the user under this key. We clear it on first
+// load post-migration so stale data doesn't sit around forever; nothing
+// reads from it anymore.
 const LEGACY_USER_KEY = "magicus:user";
 
 function supabaseUserToAuthUser(u: SupabaseUser): AuthUser {
@@ -65,36 +64,28 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [gateOpen, setGateOpen] = useState(false);
   const pendingActionRef = useRef<GateAction>(null);
 
-  // Bootstrap: prefer the Supabase session; fall back to the legacy
-  // localStorage key while we're still on the `local` backend so users
-  // don't get bounced to the sign-in modal mid-rollout.
   useEffect(() => {
-    let cancelled = false;
-    if (storageBackend === "supabase") {
-      const sb = supabaseBrowser();
-      void sb.auth.getSession().then(({ data }: { data: { session: Session | null } }) => {
-        if (cancelled) return;
-        if (data.session) setUser(supabaseUserToAuthUser(data.session.user));
-        setHydrated(true);
-      });
-      const { data: sub } = sb.auth.onAuthStateChange(
-        (_evt: string, session: Session | null) => {
-          setUser(session ? supabaseUserToAuthUser(session.user) : null);
-        }
-      );
-      return () => {
-        cancelled = true;
-        sub.subscription.unsubscribe();
-      };
-    }
+    // One-shot cleanup of the pre-migration localStorage key. Idempotent
+    // and cheap; once the codebase ages enough that everyone's been on
+    // Supabase for a while, this can come out.
+    try { localStorage.removeItem(LEGACY_USER_KEY); } catch { /* ignore */ }
 
-    // Legacy local-backend bootstrap.
-    try {
-      const raw = localStorage.getItem(LEGACY_USER_KEY);
-      if (raw) setUser(JSON.parse(raw) as AuthUser);
-    } catch { /* ignore */ }
-    setHydrated(true);
-    return () => { cancelled = true; };
+    let cancelled = false;
+    const sb = supabaseBrowser();
+    void sb.auth.getSession().then(({ data }: { data: { session: Session | null } }) => {
+      if (cancelled) return;
+      if (data.session) setUser(supabaseUserToAuthUser(data.session.user));
+      setHydrated(true);
+    });
+    const { data: sub } = sb.auth.onAuthStateChange(
+      (_evt: string, session: Session | null) => {
+        setUser(session ? supabaseUserToAuthUser(session.user) : null);
+      }
+    );
+    return () => {
+      cancelled = true;
+      sub.subscription.unsubscribe();
+    };
   }, []);
 
   const signInWithGoogle = useCallback(async () => {
@@ -110,14 +101,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const signOut = useCallback(async () => {
-    if (storageBackend === "supabase") {
-      const sb = supabaseBrowser();
-      await sb.auth.signOut();
-    } else {
-      // Legacy path
-      try { localStorage.removeItem(LEGACY_USER_KEY); } catch { /* ignore */ }
-      setUser(null);
-    }
+    const sb = supabaseBrowser();
+    await sb.auth.signOut();
   }, []);
 
   const openGate = useCallback((pendingAction?: GateAction) => {
