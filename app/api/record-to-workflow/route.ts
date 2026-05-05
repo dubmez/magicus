@@ -154,23 +154,58 @@ async function waitForFileActive(
 
 type ApiErrorLike = { status?: number; message?: string };
 
+function isOverloaded(err: unknown): boolean {
+  const e = err as ApiErrorLike;
+  return (
+    e.status === 503 ||
+    (typeof e.message === "string" &&
+      (e.message.includes("UNAVAILABLE") || e.message.includes("503")))
+  );
+}
+
 // Gemini 2.5 Flash returns 503 UNAVAILABLE when the model is overloaded.
 // One automatic retry with a 1.2s backoff catches the common case where the
-// spike clears in seconds; if the second attempt still fails we bubble up
-// so the route can surface a friendly message.
-async function generateWithRetry<T>(call: () => Promise<T>): Promise<T> {
+// spike clears in seconds.
+async function callWithRetry<T>(call: () => Promise<T>, label: string): Promise<T> {
   try {
     return await call();
   } catch (err) {
-    const e = err as ApiErrorLike;
-    const isOverloaded =
-      e.status === 503 ||
-      (typeof e.message === "string" &&
-        (e.message.includes("UNAVAILABLE") || e.message.includes("503")));
-    if (!isOverloaded) throw err;
-    console.warn("[record-to-workflow] Gemini 503 — retrying once after 1.2s");
+    if (!isOverloaded(err)) throw err;
+    console.warn(`[record-to-workflow] ${label}: 503 — retrying once after 1.2s`);
     await new Promise((r) => setTimeout(r, 1200));
     return await call();
+  }
+}
+
+// Tries 2.5 Flash (with retry), then falls back to 2.0 Flash (with retry)
+// when 2.5 keeps overloading. 2.0 Flash supports the same multimodal inputs
+// and responseSchema; it lacks 2.5's thinking tokens so output may be
+// slightly less precise, which is a fine trade for not failing the user.
+async function generateWithFallback(
+  client: GoogleGenAI,
+  contents: ReturnType<typeof createUserContent>
+) {
+  const config = {
+    responseMimeType: "application/json",
+    responseSchema,
+    maxOutputTokens: 8000,
+  };
+  try {
+    return await callWithRetry(
+      () =>
+        client.models.generateContent({ model: "gemini-2.5-flash", contents, config }),
+      "gemini-2.5-flash"
+    );
+  } catch (err) {
+    if (!isOverloaded(err)) throw err;
+    console.warn(
+      "[record-to-workflow] gemini-2.5-flash overloaded after retry — falling back to gemini-2.0-flash"
+    );
+    return await callWithRetry(
+      () =>
+        client.models.generateContent({ model: "gemini-2.0-flash", contents, config }),
+      "gemini-2.0-flash"
+    );
   }
 }
 
@@ -243,19 +278,9 @@ export async function POST(req: NextRequest) {
           : "(No narration was captured. Work from the video alone, and leave 'why' empty if you cannot tell why this workflow exists.)"),
     });
 
-    const response = await generateWithRetry(() =>
-      client.models.generateContent({
-        model: "gemini-2.5-flash",
-        contents: createUserContent(userPromptParts),
-        config: {
-          responseMimeType: "application/json",
-          responseSchema,
-          // 2.5 Flash uses thinking tokens by default. Headroom matters more
-          // here than economy — a truncated structured response fails to
-          // parse, which is worse than a slightly larger bill.
-          maxOutputTokens: 8000,
-        },
-      })
+    const response = await generateWithFallback(
+      client,
+      createUserContent(userPromptParts)
     );
 
     const text = response.text;
