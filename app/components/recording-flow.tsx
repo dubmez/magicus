@@ -1081,9 +1081,11 @@ function ProcessingScreen() {
 function ErrorScreen({
   onRetry,
   onCancel,
+  reason,
 }: {
   onRetry: () => void;
   onCancel: () => void;
+  reason?: string | null;
 }) {
   return (
     <div
@@ -1126,10 +1128,29 @@ function ErrorScreen({
           >
             Something didn&apos;t quite work
           </h1>
-          <p style={{ fontSize: 15, color: "#547863", lineHeight: 1.55, marginBottom: 32, maxWidth: 440 }}>
+          <p style={{ fontSize: 15, color: "#547863", lineHeight: 1.55, marginBottom: reason ? 16 : 32, maxWidth: 440 }}>
             We couldn&apos;t map your workflow from that recording. This sometimes
             happens with very short recordings or connection issues.
           </p>
+          {reason && (
+            <div
+              style={{
+                fontSize: 12,
+                color: "#8B2A2A",
+                background: "#FDECEC",
+                border: "1px solid #E5A8A8",
+                borderRadius: 8,
+                padding: "8px 12px",
+                marginBottom: 24,
+                maxWidth: 440,
+                lineHeight: 1.45,
+                fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
+                wordBreak: "break-word",
+              }}
+            >
+              {reason}
+            </div>
+          )}
           <div className="flex flex-col items-center gap-3">
             <button
               onClick={onRetry}
@@ -1185,6 +1206,15 @@ export function RecordingFlow({
   const [reviewDuration, setReviewDuration] = useState(0);
   const [reviewTranscript, setReviewTranscript] = useState("");
   const [reviewThumbnail, setReviewThumbnail] = useState<string | null>(null);
+  // Diagnostic message routed to ErrorScreen so users (and us) can see why
+  // the run failed instead of the generic 'something didn't quite work'.
+  const [errorReason, setErrorReason] = useState<string | null>(null);
+
+  const failTo = useCallback((reason: string) => {
+    console.error("[recording-flow] error:", reason);
+    setErrorReason(reason);
+    setStage("error");
+  }, []);
 
   const recorder = useRecorder();
   const showNudge =
@@ -1231,12 +1261,23 @@ export function RecordingFlow({
   }, []);
 
   const handleMap = useCallback(async () => {
-    if (!reviewBlob || reviewDuration < 15) {
-      setStage("error");
+    if (!reviewBlob) { failTo("No recording captured."); return; }
+    if (reviewDuration < 15) {
+      failTo(`Recording too short (${reviewDuration}s) — minimum is 15s.`);
       return;
     }
+    if (reviewBlob.size === 0) {
+      failTo("Recording captured 0 bytes — the screen-share stream may have ended before any chunks were emitted.");
+      return;
+    }
+    setErrorReason(null);
     setStage("processing");
     try {
+      // Log size so we can rule out Vercel's 4.5MB body limit if a real
+      // recording fails on prod.
+      console.info(
+        `[recording-flow] uploading ${(reviewBlob.size / 1024 / 1024).toFixed(2)}MB ${reviewMime}, ${reviewDuration}s, transcript=${reviewTranscript.length}c`
+      );
       // Upload as multipart so the binary doesn't go through base64-in-JSON
       // (which inflates by ~33% and JSON-parses poorly server-side).
       const fd = new FormData();
@@ -1251,12 +1292,26 @@ export function RecordingFlow({
         body: fd,
       });
       if (!res.ok) {
-        setStage("error");
+        // Try to surface the server's reason. For 413 Payload Too Large
+        // (Vercel's body limit) we won't even get a JSON body back.
+        let serverReason = `${res.status} ${res.statusText}`.trim();
+        try {
+          const text = await res.text();
+          if (text) {
+            try {
+              const j = JSON.parse(text) as { error?: string };
+              if (j.error) serverReason = `${res.status} — ${j.error}`;
+            } catch {
+              serverReason = `${res.status} — ${text.slice(0, 200)}`;
+            }
+          }
+        } catch { /* fall through */ }
+        failTo(`Server: ${serverReason}`);
         return;
       }
       const data = (await res.json()) as { workflow?: RecordedWorkflow; error?: string };
       if (!data.workflow) {
-        setStage("error");
+        failTo(`Server returned no workflow${data.error ? `: ${data.error}` : ""}.`);
         return;
       }
 
@@ -1271,10 +1326,11 @@ export function RecordingFlow({
         })
       );
       onSuccess({ ...data.workflow, steps: enrichedSteps });
-    } catch {
-      setStage("error");
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      failTo(`Network error: ${msg}`);
     }
-  }, [reviewBlob, reviewDuration, reviewTranscript, reviewMime, onSuccess]);
+  }, [reviewBlob, reviewDuration, reviewTranscript, reviewMime, onSuccess, failTo]);
 
   // Cancel from any screen — clean up streams and bubble up.
   const handleCancel = useCallback(() => {
@@ -1314,6 +1370,12 @@ export function RecordingFlow({
   if (stage === "processing") {
     return <ProcessingScreen />;
   }
-  return <ErrorScreen onRetry={() => setStage("prep")} onCancel={handleCancel} />;
+  return (
+    <ErrorScreen
+      onRetry={() => { setErrorReason(null); setStage("prep"); }}
+      onCancel={handleCancel}
+      reason={errorReason}
+    />
+  );
 }
 
