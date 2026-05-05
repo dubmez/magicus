@@ -1,6 +1,6 @@
 import { type NextRequest, NextResponse } from "next/server";
 import { GoogleGenAI, createPartFromUri, createUserContent, Type } from "@google/genai";
-import { del } from "@vercel/blob";
+import { del, get } from "@vercel/blob";
 
 // Vercel function config: Gemini calls for video can run 15-30s+, so bump the
 // max duration. (Hobby tier ceiling is 60s; we ask for 60.)
@@ -251,9 +251,10 @@ export async function POST(req: NextRequest) {
       { status: 400 }
     );
   }
-  // Defensive — only allow URLs from our own Blob bucket so an attacker can't
-  // point us at an arbitrary host and use this route as a fetch proxy.
-  const blobPattern = /^https:\/\/[a-z0-9-]+\.public\.blob\.vercel-storage\.com\//;
+  // Defensive — only allow URLs from Vercel Blob so an attacker can't point
+  // us at an arbitrary host and use this route as a fetch proxy. Private
+  // and public blobs sit on different subdomains, so we match either.
+  const blobPattern = /^https:\/\/[a-z0-9-]+\.(?:public|private)\.blob\.vercel-storage\.com\//;
   if (!blobUrls.every((u) => typeof u === "string" && blobPattern.test(u))) {
     return NextResponse.json(
       { error: "Invalid recording location." },
@@ -285,12 +286,15 @@ export async function POST(req: NextRequest) {
     // Pull each chunk from Blob in order and stitch them back into a single
     // recording. webm/mp4 are append-friendly when the chunks come from the
     // same MediaRecorder session, so binary concatenation reproduces the
-    // original file byte-for-byte.
+    // original file byte-for-byte. Chunks are stored as private blobs, so
+    // we use the SDK's `get()` which authenticates with our R/W token.
     const buffers = await Promise.all(
       blobUrls.map(async (url) => {
-        const res = await fetch(url);
-        if (!res.ok) throw new Error(`Blob fetch failed: ${res.status}`);
-        return new Uint8Array(await res.arrayBuffer());
+        const downloaded = await get(url, { access: "private" });
+        if (!downloaded || downloaded.statusCode !== 200 || !downloaded.stream) {
+          throw new Error(`Blob fetch failed: status ${downloaded?.statusCode ?? "unknown"}`);
+        }
+        return new Uint8Array(await new Response(downloaded.stream).arrayBuffer());
       })
     );
     const totalBytes = buffers.reduce((n, b) => n + b.byteLength, 0);

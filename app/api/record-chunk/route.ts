@@ -43,8 +43,11 @@ export async function POST(req: NextRequest) {
   const pathname = `recordings/${sessionId}/${String(seq).padStart(3, "0")}.bin`;
 
   try {
+    // Private access — recordings should not be retrievable by anyone with
+    // a guessable URL. The fetch in /api/record-to-workflow uses the SDK's
+    // `get()` to authenticate with our read-write token.
     const result = await put(pathname, buffer, {
-      access: "public",
+      access: "private",
       contentType,
       // Each seq is unique per session; allow overwrites just so a retry
       // of the same chunk doesn't 409.
