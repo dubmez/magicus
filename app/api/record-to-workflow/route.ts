@@ -218,22 +218,22 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  // The recording is uploaded to Vercel Blob client-side (Browser → Blob
-  // direct), then we get a JSON pointer here. This bypasses Vercel's 4.5MB
-  // function payload cap, which a 30s+ webm easily exceeds.
-  let blobUrl = "";
+  // The recording is uploaded as ~3.5MB chunks to /api/record-chunk and
+  // then handed to us as a list of blob URLs. We pull each chunk from Blob,
+  // concatenate, and forward to Gemini.
+  let blobUrls: string[] = [];
   let transcript = "";
   let durationSeconds = 0;
   let mimeType = "video/webm";
 
   try {
     const body = (await req.json()) as {
-      blobUrl?: string;
+      blobUrls?: string[];
       transcript?: string;
       durationSeconds?: number;
       mimeType?: string;
     };
-    blobUrl = String(body.blobUrl ?? "").trim();
+    blobUrls = Array.isArray(body.blobUrls) ? body.blobUrls : [];
     transcript = String(body.transcript ?? "").trim();
     durationSeconds = Number(body.durationSeconds ?? 0);
     mimeType = String(body.mimeType ?? "video/webm");
@@ -245,7 +245,7 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  if (!blobUrl) {
+  if (blobUrls.length === 0) {
     return NextResponse.json(
       { error: "No recording attached." },
       { status: 400 }
@@ -253,7 +253,8 @@ export async function POST(req: NextRequest) {
   }
   // Defensive — only allow URLs from our own Blob bucket so an attacker can't
   // point us at an arbitrary host and use this route as a fetch proxy.
-  if (!/^https:\/\/[a-z0-9-]+\.public\.blob\.vercel-storage\.com\//.test(blobUrl)) {
+  const blobPattern = /^https:\/\/[a-z0-9-]+\.public\.blob\.vercel-storage\.com\//;
+  if (!blobUrls.every((u) => typeof u === "string" && blobPattern.test(u))) {
     return NextResponse.json(
       { error: "Invalid recording location." },
       { status: 400 }
@@ -268,26 +269,38 @@ export async function POST(req: NextRequest) {
 
   const client = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 
-  // Always try to clean up the Blob after we're done — success or failure.
+  // Always try to clean up the Blobs after we're done — success or failure.
   // Recordings are throwaway; we only need them long enough to forward to
   // Gemini's File API. Wrapped so a delete failure can't mask the real
   // error from the user.
   const cleanupBlob = async () => {
     try {
-      await del(blobUrl);
+      await del(blobUrls);
     } catch (err) {
       console.warn("[record-to-workflow] blob cleanup failed", err);
     }
   };
 
   try {
-    // Pull the recording from Blob and stream it into Gemini's File API.
-    // (Gemini's SDK accepts a Blob/File-like for upload.)
-    const blobRes = await fetch(blobUrl);
-    if (!blobRes.ok) {
-      throw new Error(`Blob fetch failed: ${blobRes.status}`);
+    // Pull each chunk from Blob in order and stitch them back into a single
+    // recording. webm/mp4 are append-friendly when the chunks come from the
+    // same MediaRecorder session, so binary concatenation reproduces the
+    // original file byte-for-byte.
+    const buffers = await Promise.all(
+      blobUrls.map(async (url) => {
+        const res = await fetch(url);
+        if (!res.ok) throw new Error(`Blob fetch failed: ${res.status}`);
+        return new Uint8Array(await res.arrayBuffer());
+      })
+    );
+    const totalBytes = buffers.reduce((n, b) => n + b.byteLength, 0);
+    const merged = new Uint8Array(totalBytes);
+    let offset = 0;
+    for (const b of buffers) {
+      merged.set(b, offset);
+      offset += b.byteLength;
     }
-    const videoBlob = await blobRes.blob();
+    const videoBlob = new Blob([merged], { type: mimeType });
     const uploaded = await client.files.upload({
       file: videoBlob,
       config: { mimeType },

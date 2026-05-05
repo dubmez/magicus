@@ -10,7 +10,6 @@ import {
   Sparkles,
   X,
 } from "lucide-react";
-import { upload } from "@vercel/blob/client";
 import { AnimatedButterfly } from "./animated-butterfly";
 
 const dmSerif = { fontFamily: "var(--font-dm-serif), serif", fontStyle: "italic" as const };
@@ -1278,30 +1277,47 @@ export function RecordingFlow({
         `[recording-flow] uploading ${(reviewBlob.size / 1024 / 1024).toFixed(2)}MB ${reviewMime}, ${reviewDuration}s, transcript=${reviewTranscript.length}c`
       );
 
-      // Step 1: client-direct upload to Vercel Blob. The browser hits our
-      // /api/blob-upload route to mint a token, then PUTs the recording
-      // straight to Blob storage — bypassing Vercel's 4.5MB function body
-      // cap that previously broke 30s+ recordings.
-      const ext = reviewMime.includes("mp4") ? "mp4" : "webm";
-      const filename = `recordings/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`;
-      // Strip codec params (`video/webm;codecs=vp9,opus`) — Blob's content
-      // type check is exact-match unless the allow list uses wildcards, and
-      // even then a clean MIME type makes downstream Gemini handling tidier.
+      // Strip codec params (`video/webm;codecs=vp9,opus`) — gives us a
+      // clean Content-Type for the Blob put + downstream Gemini handling.
       const baseMime = reviewMime.split(";")[0].trim() || "video/webm";
-      const uploaded = await upload(filename, reviewBlob, {
-        access: "public",
-        handleUploadUrl: "/api/blob-upload",
-        contentType: baseMime,
-      });
 
-      // Step 2: tell our API where to find the recording. Tiny JSON payload,
-      // no body-limit risk. The server fetches from Blob, ships to Gemini,
-      // and deletes the blob when done.
+      // Step 1: chunked upload through our own API. We split the recording
+      // into ~3.5MB pieces (well under Vercel's 4.5MB function body cap),
+      // POST each one as a binary body, and the server `put()`s it to
+      // Vercel Blob. This bypasses both the function-body limit and the
+      // CORS preflight failures we hit with `@vercel/blob/client`.
+      const CHUNK_SIZE = 3.5 * 1024 * 1024;
+      const sessionId = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+      const totalChunks = Math.max(1, Math.ceil(reviewBlob.size / CHUNK_SIZE));
+      const blobUrls: string[] = [];
+      for (let i = 0; i < totalChunks; i++) {
+        const start = i * CHUNK_SIZE;
+        const end = Math.min(start + CHUNK_SIZE, reviewBlob.size);
+        const chunk = reviewBlob.slice(start, end, baseMime);
+        const chunkRes = await fetch("/api/record-chunk", {
+          method: "POST",
+          headers: {
+            "Content-Type": baseMime,
+            "x-session-id": sessionId,
+            "x-chunk-seq": String(i),
+          },
+          body: chunk,
+        });
+        if (!chunkRes.ok) {
+          const text = await chunkRes.text().catch(() => "");
+          throw new Error(`Chunk ${i + 1}/${totalChunks} upload failed (${chunkRes.status})${text ? `: ${text.slice(0, 120)}` : ""}`);
+        }
+        const { url } = (await chunkRes.json()) as { url: string };
+        blobUrls.push(url);
+      }
+
+      // Step 2: tell our API where the chunks live. Server fetches them,
+      // concatenates, ships to Gemini, then deletes them all.
       const res = await fetch("/api/record-to-workflow", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          blobUrl: uploaded.url,
+          blobUrls,
           transcript: reviewTranscript,
           durationSeconds: reviewDuration,
           mimeType: baseMime,
