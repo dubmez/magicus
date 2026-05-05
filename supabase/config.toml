@@ -1,0 +1,38 @@
+# Minimal config for the Supabase CLI. Most settings are kept at defaults
+# so this file is portable across environments. Adjust `project_id` to
+# match the value shown in your Supabase project settings before running
+# `supabase link`.
+
+project_id = "magicus"
+
+[api]
+# REST/GraphQL/Storage all served at this port locally (`supabase start`).
+port = 54321
+schemas = ["public"]
+extra_search_path = ["public"]
+
+[db]
+port = 54322
+shadow_port = 54320
+major_version = 17
+
+[studio]
+enabled = true
+port = 54323
+
+[auth]
+enabled = true
+# Match this to your production site URL once deployed; localhost works
+# for `supabase start` development.
+site_url = "http://localhost:3000"
+additional_redirect_urls = ["https://magicus.vercel.app"]
+
+[auth.external.google]
+enabled = true
+# These come from the same Google Cloud project that already powers the
+# NEXT_PUBLIC_GOOGLE_CLIENT_ID env var. Set them in Supabase dashboard
+# (Auth → Providers → Google) for production; the CLI reads them from
+# environment variables for local dev.
+client_id = "env(SUPABASE_AUTH_GOOGLE_CLIENT_ID)"
+secret = "env(SUPABASE_AUTH_GOOGLE_SECRET)"
+redirect_uri = ""

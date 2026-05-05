@@ -6,7 +6,11 @@ export default defineConfig({
   resolve: { tsconfigPaths: true },
   test: {
     environment: "node",
-    include: ["lib/**/*.{test,spec}.ts", "test/**/*.{test,spec}.ts"],
+    include: [
+      "lib/**/*.{test,spec}.ts",
+      "test/**/*.{test,spec}.ts",
+      "supabase/**/*.{test,spec}.ts",
+    ],
     // We don't lean on globals (`describe`, `it`) without import — explicit
     // imports keep the tests grep-able and avoid surprises in editors.
     globals: false,
