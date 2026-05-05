@@ -88,6 +88,16 @@ export type Trigger = {
   description?: string;
 };
 
+// Set when the workflow was cloned from a public share. Renders subtly in
+// the detail panel as 'Remixed from {sharedBy}'s {workflowName}'.
+export type RemixedFrom = {
+  workflowName: string;
+  sharedBy: string;
+  // The original share token, so we can hop back to the source view if
+  // it's still discoverable on this device (best effort — localStorage only).
+  shareToken?: string;
+};
+
 export type Workflow = {
   id: string;
   theme: Theme;
@@ -102,6 +112,7 @@ export type Workflow = {
   automationRationale: string;
   x: number;
   y: number;
+  remixedFrom?: RemixedFrom;
 };
 
 export type Connection = { from: string; to: string; label?: string };

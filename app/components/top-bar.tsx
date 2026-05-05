@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Download, Plus, Zap, LogOut } from "lucide-react";
+import { Plus, Zap, LogOut } from "lucide-react";
 import { useAuth } from "@/lib/auth-context";
 
 function UserMenu() {
@@ -121,12 +121,10 @@ function UserMenu() {
 }
 
 export function TopBar({
-  onExport,
   onNew,
   onAutomate,
   automateCount,
 }: {
-  onExport: () => void;
   onNew: () => void;
   onAutomate: () => void;
   automateCount: number;
@@ -173,20 +171,19 @@ export function TopBar({
         >
           magicus
         </div>
-      </div>
-
-      <div className="flex items-center gap-1.5 md:gap-2">
+        {/* New workflow sits with the logo cluster — it's the canvas-level
+            create action and reads as 'left side' alongside the brand. */}
         <button
           onClick={onNew}
-          className="flex items-center gap-2 transition-colors hover:bg-[#EBF4DD]"
+          className="flex items-center gap-2 transition-colors hover:bg-[#EBF4DD] ml-2 md:ml-4"
           style={{
-            background: "#FFFFFF",
-            color: "#3B4953",
-            padding: "8px 14px",
+            background: "transparent",
+            color: "#547863",
+            padding: "8px 12px",
             borderRadius: 999,
             fontSize: 13,
             fontWeight: 500,
-            border: "1px solid #EBF4DD",
+            border: "1px solid transparent",
             whiteSpace: "nowrap",
             flexShrink: 0,
           }}
@@ -196,6 +193,9 @@ export function TopBar({
           <Plus size={14} />
           <span className="hidden md:inline">New workflow</span>
         </button>
+      </div>
+
+      <div className="flex items-center gap-1.5 md:gap-2">
         <button
           onClick={onAutomate}
           disabled={automateCount === 0}
@@ -231,25 +231,6 @@ export function TopBar({
               {automateCount}
             </span>
           )}
-        </button>
-        <button
-          onClick={onExport}
-          className="flex items-center gap-2 transition-all hover:opacity-90"
-          style={{
-            background: "#3B4953",
-            color: "#EBF4DD",
-            padding: "8px 14px",
-            borderRadius: 999,
-            fontSize: 13,
-            fontWeight: 500,
-            whiteSpace: "nowrap",
-            flexShrink: 0,
-          }}
-          title="Export .md"
-          aria-label="Export markdown"
-        >
-          <Download size={14} />
-          <span className="hidden md:inline">Export .md</span>
         </button>
         <div style={{ width: 8 }} />
         <UserMenu />

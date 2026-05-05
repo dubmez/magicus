@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { getSharesByWorkflowId } from "@/lib/shares";
 import {
   X,
   Download,
@@ -13,6 +14,8 @@ import {
   Hand,
   AlertTriangle,
   Pencil,
+  Share2,
+  MoreHorizontal,
 } from "lucide-react";
 import type { Workflow, Theme, Trigger, Step, StepClassification } from "@/lib/workflows";
 import {
@@ -850,6 +853,196 @@ function Legend() {
   );
 }
 
+// ─── Footer ────────────────────────────────────────────────────────────────
+// Three-tier action set: primary (Automate it), secondary (Share), and an
+// overflow menu for tertiary actions (Chain, Export, Delete). Keeps the
+// footer scannable without losing capability.
+function DetailFooter({
+  workflow,
+  effectiveReadOnly,
+  onAutomate,
+  onShare,
+  onChain,
+  onExport,
+  onDelete,
+}: {
+  workflow: Workflow;
+  effectiveReadOnly: boolean;
+  onAutomate?: (id: string) => void;
+  onShare?: (id: string) => void;
+  onChain: (id: string) => void;
+  onExport: (id: string) => void;
+  onDelete: (id: string) => void;
+}) {
+  const [overflowOpen, setOverflowOpen] = useState(false);
+  const wrapRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!overflowOpen) return;
+    const onDoc = (e: MouseEvent) => {
+      if (wrapRef.current && !wrapRef.current.contains(e.target as Node)) {
+        setOverflowOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", onDoc);
+    return () => document.removeEventListener("mousedown", onDoc);
+  }, [overflowOpen]);
+
+  return (
+    <div
+      style={{
+        borderTop: "1px solid #EBF4DD",
+        padding: "12px 20px",
+        display: "flex",
+        gap: 8,
+        background: "#FFFFFF",
+        flexShrink: 0,
+        alignItems: "center",
+      }}
+    >
+      {onAutomate && (
+        <button
+          onClick={() => onAutomate(workflow.id)}
+          className="flex-1 flex items-center justify-center gap-2 hover:opacity-90 transition-opacity"
+          style={{
+            background: "#3B4953",
+            color: "#EBF4DD",
+            padding: "10px 14px",
+            borderRadius: 999,
+            fontSize: 13,
+            fontWeight: 500,
+            border: "none",
+            cursor: "pointer",
+            whiteSpace: "nowrap",
+          }}
+        >
+          <Zap size={13} fill="#EBF4DD" strokeWidth={0} />
+          Automate it
+        </button>
+      )}
+      {onShare && !effectiveReadOnly && (
+        <button
+          onClick={() => onShare(workflow.id)}
+          className="flex items-center justify-center gap-2 hover:bg-[#EBF4DD] transition-colors"
+          style={{
+            background: "transparent",
+            color: "#547863",
+            padding: "10px 14px",
+            borderRadius: 999,
+            fontSize: 13,
+            fontWeight: 500,
+            border: "1px solid #547863",
+            cursor: "pointer",
+            whiteSpace: "nowrap",
+            flexShrink: 0,
+          }}
+          title="Share this workflow"
+        >
+          <Share2 size={13} />
+          Share
+        </button>
+      )}
+      <div ref={wrapRef} style={{ position: "relative", flexShrink: 0 }}>
+        <button
+          onClick={() => setOverflowOpen((v) => !v)}
+          className="flex items-center justify-center hover:bg-[#EBF4DD] transition-colors"
+          style={{
+            background: "transparent",
+            color: "#547863",
+            width: 36,
+            height: 36,
+            padding: 0,
+            borderRadius: 999,
+            border: "1px solid #EBF4DD",
+            cursor: "pointer",
+          }}
+          aria-label="More actions"
+          title="More actions"
+        >
+          <MoreHorizontal size={16} />
+        </button>
+        {overflowOpen && (
+          <div
+            style={{
+              position: "absolute",
+              right: 0,
+              bottom: "calc(100% + 6px)",
+              minWidth: 180,
+              background: "#FFFFFF",
+              border: "1px solid #EBF4DD",
+              borderRadius: 10,
+              padding: 4,
+              boxShadow: "0 12px 32px rgba(59, 73, 83, 0.16)",
+              zIndex: 60,
+            }}
+          >
+            {!effectiveReadOnly && (
+              <button
+                onClick={() => { setOverflowOpen(false); onChain(workflow.id); }}
+                className="w-full flex items-center gap-2 hover:bg-[#F7FAF2] rounded-md transition-colors"
+                style={{
+                  background: "transparent",
+                  border: "none",
+                  padding: "8px 10px",
+                  fontSize: 13,
+                  color: "#3B4953",
+                  cursor: "pointer",
+                  textAlign: "left",
+                }}
+              >
+                <Link2 size={13} style={{ color: "#547863" }} />
+                Chain into another
+              </button>
+            )}
+            <button
+              onClick={() => { setOverflowOpen(false); onExport(workflow.id); }}
+              className="w-full flex items-center gap-2 hover:bg-[#F7FAF2] rounded-md transition-colors"
+              style={{
+                background: "transparent",
+                border: "none",
+                padding: "8px 10px",
+                fontSize: 13,
+                color: "#3B4953",
+                cursor: "pointer",
+                textAlign: "left",
+              }}
+            >
+              <Download size={13} style={{ color: "#547863" }} />
+              Export .md
+            </button>
+            {!effectiveReadOnly && (
+              <>
+                <div style={{ height: 1, background: "#EBF4DD", margin: "4px 6px" }} />
+                <button
+                  onClick={() => {
+                    setOverflowOpen(false);
+                    if (window.confirm(`Delete "${workflow.name}"? This can't be undone.`)) {
+                      onDelete(workflow.id);
+                    }
+                  }}
+                  className="w-full flex items-center gap-2 hover:bg-[#FDECEC] rounded-md transition-colors"
+                  style={{
+                    background: "transparent",
+                    border: "none",
+                    padding: "8px 10px",
+                    fontSize: 13,
+                    color: "#8B2A2A",
+                    cursor: "pointer",
+                    textAlign: "left",
+                  }}
+                >
+                  <Trash2 size={13} />
+                  Delete workflow
+                </button>
+              </>
+            )}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 // ─── DetailPanel ───────────────────────────────────────────────────────────
 export function DetailPanel({
   workflow,
@@ -861,6 +1054,7 @@ export function DetailPanel({
   onDelete,
   onUpdate,
   onAutomate,
+  onShare,
 }: {
   workflow: Workflow | null;
   incomingWorkflows?: Workflow[];
@@ -871,6 +1065,7 @@ export function DetailPanel({
   onDelete: (id: string) => void;
   onUpdate: (id: string, changes: Partial<Workflow>) => void;
   onAutomate?: (id: string) => void;
+  onShare?: (id: string) => void;
 }) {
   const { user, openGate } = useAuth();
   const unauthReadOnly = !user && !readOnly;
@@ -911,6 +1106,15 @@ export function DetailPanel({
     () => (workflow ? calculateAutomationScore(workflow.steps) : 0),
     [workflow]
   );
+
+  // Remix count — shown on the *original* sharer's view of their workflow.
+  // Best-effort: looks up share entries with this workflow id in this
+  // browser's localStorage. Cross-device counts will require a backend.
+  const remixCount = useMemo(() => {
+    if (!workflow) return 0;
+    const shares = getSharesByWorkflowId(workflow.id);
+    return shares.reduce((sum, s) => sum + s.remixCount, 0);
+  }, [workflow]);
 
   const open = !!workflow;
   return (
@@ -1028,6 +1232,28 @@ export function DetailPanel({
 
             {/* Readiness bar + rationale */}
             <ReadinessBar score={derivedScore} rationale={workflow.automationRationale} />
+
+            {/* Provenance footer — Remixed-from / Remixed-by, both subtle */}
+            {(workflow.remixedFrom || remixCount > 0) && (
+              <div
+                className="flex flex-wrap items-center gap-x-3 gap-y-1"
+                style={{
+                  marginTop: 12,
+                  fontSize: 11,
+                  color: "#90AB8B",
+                }}
+              >
+                {workflow.remixedFrom && (
+                  <span className="flex items-center gap-1">
+                    <Link2 size={11} style={{ flexShrink: 0 }} />
+                    Remixed from {workflow.remixedFrom.sharedBy}&apos;s workflow
+                  </span>
+                )}
+                {remixCount > 0 && (
+                  <span>Remixed by {remixCount} {remixCount === 1 ? "person" : "people"}</span>
+                )}
+              </div>
+            )}
           </div>
 
           {/* SCROLLABLE BODY */}
@@ -1255,97 +1481,15 @@ export function DetailPanel({
             </Section>
           </fieldset>
 
-          {/* FOOTER (sticky at the bottom of the panel) */}
-          <div
-            style={{
-              borderTop: "1px solid #EBF4DD",
-              padding: "12px 20px",
-              display: "flex",
-              gap: 6,
-              background: "#FFFFFF",
-              flexShrink: 0,
-              alignItems: "center",
-            }}
-          >
-            {onAutomate && (
-              <button
-                onClick={() => onAutomate(workflow.id)}
-                className="flex items-center gap-2 hover:opacity-90 transition-opacity"
-                style={{
-                  background: "#3B4953",
-                  color: "#EBF4DD",
-                  padding: "10px 14px",
-                  borderRadius: 999,
-                  fontSize: 13,
-                  fontWeight: 500,
-                  border: "none",
-                  cursor: "pointer",
-                  whiteSpace: "nowrap",
-                  flexShrink: 0,
-                }}
-              >
-                <Zap size={13} fill="#EBF4DD" strokeWidth={0} />
-                Build automation
-              </button>
-            )}
-            {!effectiveReadOnly && (
-              <button
-                onClick={() => onChain(workflow.id)}
-                className="flex items-center justify-center hover:bg-[#EBF4DD] transition-colors"
-                style={{
-                  background: "transparent",
-                  color: "#3B4953",
-                  width: 36,
-                  height: 36,
-                  padding: 0,
-                  borderRadius: 999,
-                  border: "1px solid #EBF4DD",
-                  cursor: "pointer",
-                  flexShrink: 0,
-                }}
-                title="Chain this workflow into another"
-                aria-label="Chain"
-              >
-                <Link2 size={14} />
-              </button>
-            )}
-            <button
-              onClick={() => onExport(workflow.id)}
-              className="flex items-center justify-center hover:bg-[#EBF4DD] transition-colors"
-              style={{
-                background: "transparent",
-                color: "#3B4953",
-                width: 36,
-                height: 36,
-                padding: 0,
-                borderRadius: 999,
-                border: "1px solid #EBF4DD",
-                cursor: "pointer",
-                flexShrink: 0,
-              }}
-              title="Export as Markdown"
-              aria-label="Export markdown"
-            >
-              <Download size={14} />
-            </button>
-            <div style={{ flex: 1 }} />
-            {!effectiveReadOnly && (
-              <button
-                onClick={() => {
-                  const ok = window.confirm(
-                    `Delete "${workflow.name}"? This can't be undone.`
-                  );
-                  if (ok) onDelete(workflow.id);
-                }}
-                className="hover:bg-[#EBF4DD] rounded-md p-2"
-                style={{ color: "#90AB8B", flexShrink: 0 }}
-                aria-label="Delete workflow"
-                title="Delete workflow"
-              >
-                <Trash2 size={14} />
-              </button>
-            )}
-          </div>
+          <DetailFooter
+            workflow={workflow}
+            effectiveReadOnly={effectiveReadOnly}
+            onAutomate={onAutomate}
+            onShare={onShare}
+            onChain={onChain}
+            onExport={onExport}
+            onDelete={onDelete}
+          />
         </>
       )}
     </div>

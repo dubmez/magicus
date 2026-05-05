@@ -7,6 +7,7 @@ import { Sidebar } from "./components/sidebar";
 import { DetailPanel } from "./components/detail-panel";
 import { ExportModal } from "./components/export-modal";
 import { AutomateModal } from "./components/automate-modal";
+import { ShareModal } from "./components/share-modal";
 import { Landing } from "./components/landing";
 import { LandingHero } from "./components/landing-hero";
 import { RecordingFlow, type RecordedWorkflow } from "./components/recording-flow";
@@ -58,6 +59,7 @@ export default function Home() {
   const [exportTarget, setExportTarget] = useState<"all" | { id: string } | null>(null);
   const [automateOpen, setAutomateOpen] = useState(false);
   const [recordingOpen, setRecordingOpen] = useState(false);
+  const [shareTargetId, setShareTargetId] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
 
   // After a sign-out, drop the user back to the landing hero. They likely
@@ -72,6 +74,44 @@ export default function Home() {
     const t = setTimeout(() => setToast(null), 3000);
     return () => clearTimeout(t);
   }, [toast]);
+
+  // Remix handoff — when a user clicks 'Remix this workflow' on a /w/[token]
+  // page, that page writes the cloned workflow to localStorage and navigates
+  // here. We pick it up on mount, drop it onto the active canvas, select it,
+  // and surface a toast.
+  useEffect(() => {
+    if (!hydrated || !user) return;
+    let pending: Workflow | null = null;
+    try {
+      const raw = localStorage.getItem("magicus:pending-remix");
+      if (raw) pending = JSON.parse(raw) as Workflow;
+    } catch { /* ignore */ }
+    if (!pending) return;
+    try { localStorage.removeItem("magicus:pending-remix"); } catch { /* ignore */ }
+
+    let targetCanvas = activeCanvas;
+    if (!targetCanvas || targetCanvas.readOnly) {
+      targetCanvas = canvases.find((c) => !c.readOnly) ?? targetCanvas;
+      if (targetCanvas) setActiveCanvasId(targetCanvas.id);
+    }
+    if (!targetCanvas) return;
+
+    const targetWfs = workflows.filter((w) => targetCanvas!.workflowIds.includes(w.id));
+    const baseX = targetWfs.length > 0 ? Math.max(...targetWfs.map((w) => w.x)) + 800 : 0;
+    const positioned: Workflow = { ...pending, x: baseX, y: 400 };
+
+    setWorkflows((prev) => [...prev, positioned]);
+    updateCanvas(targetCanvas.id, {
+      workflowIds: [...targetCanvas.workflowIds, positioned.id],
+    });
+    setSelectedId(positioned.id);
+    setSelectedIds(new Set());
+    setFocusId(positioned.id + ":" + Date.now());
+    setStarted(true);
+    setToast("Workflow added to your canvas");
+    // Intentionally narrow deps — only run when the user finishes hydrating.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [hydrated, user]);
 
   const activeReadOnly = !!activeCanvas?.readOnly;
 
@@ -415,7 +455,6 @@ export default function Home() {
       style={{ background: "#F7FAF2", fontFamily: "var(--font-dm-sans), sans-serif" }}
     >
       <TopBar
-        onExport={() => setExportTarget("all")}
         onNew={() => setNewOpen(true)}
         onAutomate={() => setAutomateOpen(true)}
         automateCount={automateWorkflows.length}
@@ -470,6 +509,7 @@ export default function Home() {
             onDelete={handleDelete}
             onUpdate={handleUpdate}
             onAutomate={() => setAutomateOpen(true)}
+            onShare={(id) => setShareTargetId(id)}
           />
         </div>
       </div>
@@ -498,6 +538,12 @@ export default function Home() {
         workflows={automateWorkflows}
         connections={activeCanvas?.connections ?? []}
         onClose={() => setAutomateOpen(false)}
+      />
+
+      <ShareModal
+        open={!!shareTargetId}
+        workflow={shareTargetId ? workflows.find((w) => w.id === shareTargetId) ?? null : null}
+        onClose={() => setShareTargetId(null)}
       />
 
       {/* Success toast — auto-dismisses after 3s via the effect above. */}
