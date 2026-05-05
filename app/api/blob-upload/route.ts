@@ -29,7 +29,9 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
           throw new Error("Invalid upload path");
         }
         return {
-          allowedContentTypes: ["video/webm", "video/mp4"],
+          // `video/*` wildcard covers codec-extended MIMEs from MediaRecorder
+          // (e.g. `video/webm;codecs=vp9,opus`) which strict matching rejects.
+          allowedContentTypes: ["video/*"],
           // Hard cap. 60s of 600 kbps webm is comfortably under this; this
           // is just defence against unbounded uploads.
           maximumSizeInBytes: 50 * 1024 * 1024, // 50MB
@@ -39,11 +41,10 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
           tokenPayload: JSON.stringify({}),
         };
       },
-      // Required by handleUpload but a no-op for us — the client posts the
-      // resulting URL straight to /api/record-to-workflow on its next call.
-      onUploadCompleted: async () => {
-        /* nothing to record server-side */
-      },
+      // No `onUploadCompleted` — we don't need a server-side notification
+      // when the PUT finishes, and providing one auto-registers a callback
+      // URL with Vercel Blob. The client posts the resulting blob URL to
+      // /api/record-to-workflow on its next call, which is all we need.
     });
 
     return NextResponse.json(result);

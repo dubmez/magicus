@@ -1284,10 +1284,14 @@ export function RecordingFlow({
       // cap that previously broke 30s+ recordings.
       const ext = reviewMime.includes("mp4") ? "mp4" : "webm";
       const filename = `recordings/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`;
+      // Strip codec params (`video/webm;codecs=vp9,opus`) — Blob's content
+      // type check is exact-match unless the allow list uses wildcards, and
+      // even then a clean MIME type makes downstream Gemini handling tidier.
+      const baseMime = reviewMime.split(";")[0].trim() || "video/webm";
       const uploaded = await upload(filename, reviewBlob, {
         access: "public",
         handleUploadUrl: "/api/blob-upload",
-        contentType: reviewMime,
+        contentType: baseMime,
       });
 
       // Step 2: tell our API where to find the recording. Tiny JSON payload,
@@ -1300,7 +1304,7 @@ export function RecordingFlow({
           blobUrl: uploaded.url,
           transcript: reviewTranscript,
           durationSeconds: reviewDuration,
-          mimeType: reviewMime,
+          mimeType: baseMime,
         }),
       });
       if (!res.ok) {
