@@ -1,0 +1,5 @@
+# Pre-commit gate: typecheck → unit tests. Each step short-circuits the
+# commit on failure. (No ESLint config in the repo yet — Next 16 dropped
+# the built-in `next lint`. Add it back here once ESLint is configured
+# directly.)
+npm run typecheck && npm run test:run
