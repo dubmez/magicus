@@ -16,7 +16,10 @@ import {
 import { useAuth, useRequireAuth } from "@/lib/auth-context";
 import { AnimatedButterfly } from "./animated-butterfly";
 
-const dmSerif = { fontFamily: "var(--font-dm-serif), serif", fontStyle: "italic" as const };
+const dmSerif = {
+  fontFamily: "var(--font-dm-serif), serif",
+  fontStyle: "italic" as const,
+};
 const dmSans = { fontFamily: "var(--font-dm-sans), sans-serif" };
 
 const PLACEHOLDERS = [
@@ -26,7 +29,10 @@ const PLACEHOLDERS = [
 ];
 
 // ─── Speech recognition (re-declared locally to avoid coupling to landing.tsx)
-type SpeechRecognitionResultLike = { isFinal: boolean; 0: { transcript: string } };
+type SpeechRecognitionResultLike = {
+  isFinal: boolean;
+  0: { transcript: string };
+};
 type SpeechRecognitionEventLike = {
   resultIndex: number;
   results: ArrayLike<SpeechRecognitionResultLike>;
@@ -78,7 +84,14 @@ function HeroHeader() {
         >
           m
         </div>
-        <div style={{ ...dmSerif, fontSize: 22, color: "#3B4953", letterSpacing: -0.2 }}>
+        <div
+          style={{
+            ...dmSerif,
+            fontSize: 22,
+            color: "#3B4953",
+            letterSpacing: -0.2,
+          }}
+        >
           magicus
         </div>
       </div>
@@ -157,7 +170,7 @@ function HeroSection({
             maxWidth: 720,
           }}
         >
-          Get ahead of AI.
+          Get ahead of AI
         </h1>
 
         <p
@@ -169,9 +182,9 @@ function HeroSection({
             marginBottom: 36,
           }}
         >
-          You know how things really work. Record it once — Magicus maps,
-          scores, and identifies exactly where you need AI agents. You bring
-          the magic.
+          You know how things really work. Record it once - Magicus maps,
+          scores, and identifies exactly where you need AI agents. You bring the
+          magic.
         </p>
 
         <PromptBox onMap={onMap} onRecord={onRecord} />
@@ -256,7 +269,8 @@ function PromptBox({
     rec.interimResults = true;
     rec.lang = "en-US";
 
-    baseTextRef.current = text.length > 0 && !text.endsWith(" ") ? text + " " : text;
+    baseTextRef.current =
+      text.length > 0 && !text.endsWith(" ") ? text + " " : text;
 
     rec.onresult = (e) => {
       let interim = "";
@@ -279,7 +293,10 @@ function PromptBox({
       if (e.error === "not-allowed" || e.error === "service-not-allowed") {
         setPermissionDenied(true);
         if (denyTimerRef.current) clearTimeout(denyTimerRef.current);
-        denyTimerRef.current = setTimeout(() => setPermissionDenied(false), 6000);
+        denyTimerRef.current = setTimeout(
+          () => setPermissionDenied(false),
+          6000,
+        );
       }
       setIsRecording(false);
       setInterimTranscript("");
@@ -333,7 +350,9 @@ function PromptBox({
     try {
       await onMap(text);
     } catch {
-      setSubmitError("Couldn't generate a workflow — check your connection and try again.");
+      setSubmitError(
+        "Couldn't generate a workflow — check your connection and try again.",
+      );
       setStage("idle");
     }
   };
@@ -343,7 +362,9 @@ function PromptBox({
     // The closure captures the current `text`; if the user is unauthed the
     // gate replays this exact callback after sign-in, so the typed text
     // survives the round-trip.
-    guard(() => { void doSubmit(); });
+    guard(() => {
+      void doSubmit();
+    });
   };
 
   const submitDisabled = text.trim().length === 0 || stage === "generating";
@@ -435,7 +456,9 @@ function PromptBox({
         >
           <AlertTriangle size={14} style={{ flexShrink: 0, marginTop: 1 }} />
           <span>
-            <strong style={{ fontWeight: 600 }}>Microphone access denied.</strong>{" "}
+            <strong style={{ fontWeight: 600 }}>
+              Microphone access denied.
+            </strong>{" "}
             Enable microphone in your browser settings, then try again.
           </span>
         </div>
@@ -463,7 +486,11 @@ function PromptBox({
       {/* Bottom row — modes left, submit right */}
       <div
         className="flex items-center justify-between gap-3"
-        style={{ marginTop: 14, paddingTop: 12, borderTop: "1px solid #EBF4DD" }}
+        style={{
+          marginTop: 14,
+          paddingTop: 12,
+          borderTop: "1px solid #EBF4DD",
+        }}
       >
         <div className="flex items-center gap-2">
           <ModePill
@@ -612,7 +639,12 @@ function ButterflySection() {
       <div className="max-w-[1100px] mx-auto flex flex-col items-center text-center">
         <h2
           className="text-[28px] md:text-[34px]"
-          style={{ ...dmSerif, color: "#3B4953", marginBottom: 48, letterSpacing: -0.4 }}
+          style={{
+            ...dmSerif,
+            color: "#3B4953",
+            marginBottom: 48,
+            letterSpacing: -0.4,
+          }}
         >
           Watch a workflow come to life
         </h2>
@@ -654,7 +686,14 @@ function PillarsSection() {
             copy="Show Magicus how you work. Narrate as you go."
           />
           <Pillar
-            icon={<Zap size={20} style={{ color: "#547863" }} fill="#547863" strokeWidth={0} />}
+            icon={
+              <Zap
+                size={20}
+                style={{ color: "#547863" }}
+                fill="#547863"
+                strokeWidth={0}
+              />
+            }
             title="Analyse"
             copy="See exactly which steps an agent can handle — and which need you."
           />
@@ -703,7 +742,14 @@ function Pillar({
       >
         {title}
       </div>
-      <p style={{ fontSize: 15, color: "#547863", lineHeight: 1.55, maxWidth: 280 }}>
+      <p
+        style={{
+          fontSize: 15,
+          color: "#547863",
+          lineHeight: 1.55,
+          maxWidth: 280,
+        }}
+      >
         {copy}
       </p>
     </div>
@@ -748,10 +794,7 @@ export function LandingHero({
 }) {
   return (
     <div className="min-h-screen w-full flex flex-col" style={{ ...dmSans }}>
-      <div
-        className="flex flex-col"
-        style={{ minHeight: "100vh" }}
-      >
+      <div className="flex flex-col" style={{ minHeight: "100vh" }}>
         <HeroHeader />
         <HeroSection
           onMap={onMap}

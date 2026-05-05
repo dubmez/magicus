@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { getSharesByWorkflowId } from "@/lib/shares";
+import { storage } from "@/lib/db";
 import {
   X,
   Download,
@@ -1181,12 +1181,18 @@ export function DetailPanel({
   );
 
   // Remix count — shown on the *original* sharer's view of their workflow.
-  // Best-effort: looks up share entries with this workflow id in this
-  // browser's localStorage. Cross-device counts will require a backend.
-  const remixCount = useMemo(() => {
-    if (!workflow) return 0;
-    const shares = getSharesByWorkflowId(workflow.id);
-    return shares.reduce((sum, s) => sum + s.remixCount, 0);
+  // Sums remix counts across all share links for this workflow id. Async
+  // because the storage layer is async; resolves quickly for the local
+  // backend, and Phase 3 will swap in the Supabase-backed lookup.
+  const [remixCount, setRemixCount] = useState(0);
+  useEffect(() => {
+    if (!workflow) { setRemixCount(0); return; }
+    let cancelled = false;
+    void storage.loadSharesByWorkflowId(workflow.id).then((shares) => {
+      if (cancelled) return;
+      setRemixCount(shares.reduce((sum, s) => sum + s.remixCount, 0));
+    });
+    return () => { cancelled = true; };
   }, [workflow]);
 
   const open = !!workflow;

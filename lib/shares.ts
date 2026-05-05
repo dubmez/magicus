@@ -1,4 +1,9 @@
-"use client";
+// Types + non-storage helpers for shareable workflow links.
+//
+// Data access (saveShare / getShare / ...) lives behind the storage boundary
+// at `@/lib/db`. This file only owns shape and pure helpers so it can be
+// imported from server code, tests, and UI without dragging in the
+// localStorage layer.
 
 import type { Workflow } from "./workflows";
 
@@ -29,26 +34,12 @@ export type ShareSettings = {
   createdAt: number;
 };
 
-const SHARES_KEY = "magicus:shares";
-
-type ShareMap = Record<string, ShareSettings>;
-
-function readMap(): ShareMap {
-  if (typeof window === "undefined") return {};
-  try {
-    const raw = localStorage.getItem(SHARES_KEY);
-    return raw ? (JSON.parse(raw) as ShareMap) : {};
-  } catch {
-    return {};
-  }
-}
-
-function writeMap(map: ShareMap) {
-  try { localStorage.setItem(SHARES_KEY, JSON.stringify(map)); } catch {}
-}
-
 // URL-safe 10-char token. crypto.randomUUID() is widely available; we strip
 // the hyphens and take the first 10 chars for a compact share link.
+//
+// Phase 3 note: when shares move to Supabase, generation moves server-side
+// using crypto.randomBytes(24).toString('base64url') for 192 bits of entropy
+// — this client-side helper stays for migration / offline cases.
 export function generateShareToken(): string {
   if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
     return crypto.randomUUID().replace(/-/g, "").slice(0, 10);
@@ -67,30 +58,4 @@ export function defaultRedactions(): ShareRedactions {
     hiddenInputIndices: [],
     hiddenOutputIndices: [],
   };
-}
-
-export function saveShare(settings: ShareSettings): void {
-  const map = readMap();
-  map[settings.token] = settings;
-  writeMap(map);
-}
-
-export function getShare(token: string): ShareSettings | null {
-  const map = readMap();
-  return map[token] ?? null;
-}
-
-export function incrementRemixCount(token: string): void {
-  const map = readMap();
-  if (map[token]) {
-    map[token] = { ...map[token], remixCount: map[token].remixCount + 1 };
-    writeMap(map);
-  }
-}
-
-// All shares the current sharer has created — used to look up remixCount for
-// a given workflow (if there's a share for it).
-export function getSharesByWorkflowId(workflowId: string): ShareSettings[] {
-  const map = readMap();
-  return Object.values(map).filter((s) => s.workflow.id === workflowId);
 }

@@ -6,10 +6,10 @@ import type { Workflow, Step } from "@/lib/workflows";
 import {
   generateShareToken,
   defaultRedactions,
-  saveShare,
   type ShareRedactions,
   type ShareSettings,
 } from "@/lib/shares";
+import { storage } from "@/lib/db";
 import { useAuth } from "@/lib/auth-context";
 
 const dmSerif = { fontFamily: "var(--font-dm-serif), serif", fontStyle: "italic" as const };
@@ -374,7 +374,7 @@ export function ShareModal({
 
   if (!open || !workflow) return null;
 
-  const handleGenerate = () => {
+  const handleGenerate = async () => {
     const token = generateShareToken();
     const settings: ShareSettings = {
       token,
@@ -387,7 +387,7 @@ export function ShareModal({
       remixCount: 0,
       createdAt: Date.now(),
     };
-    saveShare(settings);
+    await storage.saveShare(settings);
     const origin = typeof window !== "undefined" ? window.location.origin : "";
     setGenerated({ token, url: `${origin}/w/${token}` });
     // Auto-copy + select on creation so the most likely next action is one

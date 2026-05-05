@@ -10,21 +10,16 @@ import {
   type Workflow,
   type Canvas,
 } from "./workflows";
+import {
+  storage,
+  readWorkflowsSync,
+  readCanvasesSync,
+  readActiveCanvasIdSync,
+} from "./db";
 
-const WF_KEY = "magicus:workflows";
-const CANVAS_KEY = "magicus:canvases";
-const ACTIVE_KEY = "magicus:active-canvas";
-
-function readLocal<T>(key: string, fallback: T): T {
-  if (typeof window === "undefined") return fallback;
-  try {
-    const raw = localStorage.getItem(key);
-    return raw ? (JSON.parse(raw) as T) : fallback;
-  } catch {
-    return fallback;
-  }
-}
-
+// Migration of pre-trigger workflow shapes left over from earlier seeds.
+// Stays here (not in the storage layer) because it's about evolving the
+// canonical Workflow shape, not about where the bytes live.
 function migrateWorkflows(wfs: Workflow[]): Workflow[] {
   return wfs.map((w) => {
     const leg = w as Record<string, unknown>;
@@ -42,7 +37,7 @@ function migrateWorkflows(wfs: Workflow[]): Workflow[] {
 }
 
 function initWorkflows(): Workflow[] {
-  const stored = readLocal<Workflow[]>(WF_KEY, []);
+  const stored = readWorkflowsSync();
   const base = stored.length > 0 ? migrateWorkflows(stored) : initialWorkflows;
   // Ensure all initial workflows are present so the Examples canvas always has them
   const have = new Set(base.map((w) => w.id));
@@ -51,7 +46,7 @@ function initWorkflows(): Workflow[] {
 }
 
 function initCanvases(): Canvas[] {
-  const stored = readLocal<Canvas[]>(CANVAS_KEY, []);
+  const stored = readCanvasesSync();
 
   if (stored.length === 0) {
     // First run: empty My Business + populated read-only Examples
@@ -68,16 +63,16 @@ function initCanvases(): Canvas[] {
 }
 
 export function useWorkflows() {
-  const [workflows, setWorkflows] = useState<Workflow[]>(() => {
-    const wfs = initWorkflows();
-    return wfs;
-  });
-
+  // Sync hydration from the local cache for instant render. Writes flow
+  // through `storage.*` so swapping in Supabase (Phase 3) only affects the
+  // persistence side — the hydration story changes then to a Suspense /
+  // loading state.
+  const [workflows, setWorkflows] = useState<Workflow[]>(() => initWorkflows());
   const [canvases, setCanvases] = useState<Canvas[]>(() => initCanvases());
 
   const [activeCanvasId, setActiveCanvasId] = useState<string>(() => {
     const cvs = initCanvases();
-    const stored = readLocal<string>(ACTIVE_KEY, "");
+    const stored = readActiveCanvasIdSync() ?? "";
     if (cvs.find((c) => c.id === stored)) return stored;
     // Default to the user's editable canvas, not Examples
     const editable = cvs.find((c) => !c.readOnly);
@@ -85,15 +80,15 @@ export function useWorkflows() {
   });
 
   useEffect(() => {
-    try { localStorage.setItem(WF_KEY, JSON.stringify(workflows)); } catch {}
+    void storage.saveWorkflows(workflows);
   }, [workflows]);
 
   useEffect(() => {
-    try { localStorage.setItem(CANVAS_KEY, JSON.stringify(canvases)); } catch {}
+    void storage.saveCanvases(canvases);
   }, [canvases]);
 
   useEffect(() => {
-    try { localStorage.setItem(ACTIVE_KEY, activeCanvasId); } catch {}
+    void storage.saveActiveCanvasId(activeCanvasId);
   }, [activeCanvasId]);
 
   const activeCanvas = canvases.find((c) => c.id === activeCanvasId) ?? canvases[0];

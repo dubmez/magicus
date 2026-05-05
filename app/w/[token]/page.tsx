@@ -22,11 +22,8 @@ import {
   calculateAutomationScore,
 } from "@/lib/workflows";
 import { ButterflyCard } from "@/app/components/butterfly-card";
-import {
-  getShare,
-  incrementRemixCount,
-  type ShareSettings,
-} from "@/lib/shares";
+import { type ShareSettings } from "@/lib/shares";
+import { storage } from "@/lib/db";
 import { useAuth } from "@/lib/auth-context";
 import { workflowToMarkdown } from "@/lib/markdown";
 
@@ -34,7 +31,7 @@ const dmSerif = { fontFamily: "var(--font-dm-serif), serif", fontStyle: "italic"
 const dmSans = { fontFamily: "var(--font-dm-sans), sans-serif" };
 
 // Set or update a `<meta>` tag in <head>. We use this to swap in the
-// actual workflow title/description after reading from localStorage.
+// actual workflow title/description after reading from storage.
 // Crawlers see the static stub from layout.tsx; humans pasting the URL
 // into a fresh tab still get a sensible title in their tab strip.
 function upsertMeta(attr: "name" | "property", key: string, value: string) {
@@ -46,6 +43,22 @@ function upsertMeta(attr: "name" | "property", key: string, value: string) {
     document.head.appendChild(el);
   }
   el.setAttribute("content", value);
+}
+
+// Build content-aware title + description from the actual workflow and
+// inject them into <head>. Falls back to a templated summary when
+// `automationRationale` is empty so meta is never blank.
+function applySharePageMeta(found: ShareSettings) {
+  const w = found.workflow;
+  const title = `${w.name} — Magicus`;
+  const fallbackDesc = `A ${w.theme} workflow by ${found.sharedBy.name} — ${w.automationScore}% automatable. Built on Magicus.`;
+  const description = (w.automationRationale || "").trim() || fallbackDesc;
+
+  document.title = title;
+  upsertMeta("property", "og:title", title);
+  upsertMeta("property", "og:description", description);
+  upsertMeta("name", "twitter:title", title);
+  upsertMeta("name", "twitter:description", description);
 }
 
 // ─── Header ────────────────────────────────────────────────────────────────
@@ -418,7 +431,7 @@ function ShareBody({ settings }: { settings: ShareSettings }) {
       localStorage.setItem("magicus:pending-remix", JSON.stringify(cloned));
     } catch { /* localStorage refused — proceed anyway */ }
 
-    incrementRemixCount(settings.token);
+    void storage.incrementRemixCount(settings.token);
     setRemixed(true);
     setTimeout(() => router.push("/"), 600);
   };
@@ -899,29 +912,17 @@ export default function SharePage() {
 
   useEffect(() => {
     if (!token) return;
-    const found = getShare(token);
-    setSettings(found ?? "missing");
-    if (found) {
-      // Build a content-aware title + description from the actual workflow.
-      // (Server-side OG remains the static stub from layout.tsx, since
-      // shares are localStorage-only and the server can't read them — but
-      // browser tabs and runtime preview tools that re-evaluate `<head>`
-      // get the real content.)
-      const w = found.workflow;
-      const title = `${w.name} — Magicus`;
-      // Prefer the rationale; fall back to a templated summary so the meta
-      // is never blank.
-      const fallbackDesc = `A ${w.theme} workflow by ${found.sharedBy.name} — ${w.automationScore}% automatable. Built on Magicus.`;
-      const description = (w.automationRationale || "").trim() || fallbackDesc;
-
-      document.title = title;
-      upsertMeta("property", "og:title", title);
-      upsertMeta("property", "og:description", description);
-      upsertMeta("name", "twitter:title", title);
-      upsertMeta("name", "twitter:description", description);
-    } else {
-      document.title = "Workflow not found — Magicus";
-    }
+    let cancelled = false;
+    void storage.loadShare(token).then((found) => {
+      if (cancelled) return;
+      setSettings(found ?? "missing");
+      if (found) {
+        applySharePageMeta(found);
+      } else {
+        document.title = "Workflow not found — Magicus";
+      }
+    });
+    return () => { cancelled = true; };
   }, [token]);
 
   if (settings === null) {
