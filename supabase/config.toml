@@ -25,7 +25,11 @@ enabled = true
 # Match this to your production site URL once deployed; localhost works
 # for `supabase start` development.
 site_url = "http://localhost:3000"
-additional_redirect_urls = ["https://magicus.vercel.app"]
+additional_redirect_urls = [
+  "https://magicus.io",
+  "https://www.magicus.io",
+  "https://magicus.vercel.app",
+]
 
 [auth.external.google]
 enabled = true

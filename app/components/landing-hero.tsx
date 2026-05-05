@@ -170,7 +170,7 @@ function HeroSection({
             maxWidth: 720,
           }}
         >
-          Get ahead of AI
+          Own your workflow. Get ahead of AI
         </h1>
 
         <p
