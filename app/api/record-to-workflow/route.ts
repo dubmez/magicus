@@ -152,6 +152,28 @@ async function waitForFileActive(
   throw new Error("File processing timed out");
 }
 
+type ApiErrorLike = { status?: number; message?: string };
+
+// Gemini 2.5 Flash returns 503 UNAVAILABLE when the model is overloaded.
+// One automatic retry with a 1.2s backoff catches the common case where the
+// spike clears in seconds; if the second attempt still fails we bubble up
+// so the route can surface a friendly message.
+async function generateWithRetry<T>(call: () => Promise<T>): Promise<T> {
+  try {
+    return await call();
+  } catch (err) {
+    const e = err as ApiErrorLike;
+    const isOverloaded =
+      e.status === 503 ||
+      (typeof e.message === "string" &&
+        (e.message.includes("UNAVAILABLE") || e.message.includes("503")));
+    if (!isOverloaded) throw err;
+    console.warn("[record-to-workflow] Gemini 503 — retrying once after 1.2s");
+    await new Promise((r) => setTimeout(r, 1200));
+    return await call();
+  }
+}
+
 export async function POST(req: NextRequest) {
   if (!process.env.GEMINI_API_KEY) {
     return NextResponse.json(
@@ -221,16 +243,20 @@ export async function POST(req: NextRequest) {
           : "(No narration was captured. Work from the video alone, and leave 'why' empty if you cannot tell why this workflow exists.)"),
     });
 
-    const response = await client.models.generateContent({
-      model: "gemini-2.5-flash",
-      contents: createUserContent(userPromptParts),
-      config: {
-        responseMimeType: "application/json",
-        responseSchema,
-        // A bit of headroom for the structured response.
-        maxOutputTokens: 4000,
-      },
-    });
+    const response = await generateWithRetry(() =>
+      client.models.generateContent({
+        model: "gemini-2.5-flash",
+        contents: createUserContent(userPromptParts),
+        config: {
+          responseMimeType: "application/json",
+          responseSchema,
+          // 2.5 Flash uses thinking tokens by default. Headroom matters more
+          // here than economy — a truncated structured response fails to
+          // parse, which is worse than a slightly larger bill.
+          maxOutputTokens: 8000,
+        },
+      })
+    );
 
     const text = response.text;
     if (!text) throw new Error("Empty response from model");
@@ -268,6 +294,36 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ workflow });
   } catch (err) {
     console.error("[record-to-workflow] gemini error", err);
+    const e = err as ApiErrorLike;
+    const msg = typeof e.message === "string" ? e.message : "";
+    if (
+      e.status === 503 ||
+      msg.includes("UNAVAILABLE") ||
+      msg.includes("503")
+    ) {
+      return NextResponse.json(
+        {
+          error:
+            "Gemini is overloaded right now — please try again in a minute.",
+        },
+        { status: 503 }
+      );
+    }
+    if (msg.includes("File processing failed")) {
+      return NextResponse.json(
+        {
+          error:
+            "Gemini couldn't process the recording. Make sure it's a valid screen recording and try again.",
+        },
+        { status: 502 }
+      );
+    }
+    if (msg.includes("File processing timed out")) {
+      return NextResponse.json(
+        { error: "Recording took too long to process — please try again." },
+        { status: 504 }
+      );
+    }
     return NextResponse.json(
       { error: "Failed to process recording." },
       { status: 500 }
