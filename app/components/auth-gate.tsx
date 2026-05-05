@@ -1,27 +1,15 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { X } from "lucide-react";
-import { GoogleLogin, type CredentialResponse } from "@react-oauth/google";
-import { useAuth, type AuthUser } from "@/lib/auth-context";
+import { useAuth } from "@/lib/auth-context";
 
 const dmSerif = { fontFamily: "var(--font-dm-serif), serif", fontStyle: "italic" as const };
 
-// Decode a JWT payload without verifying — we only need the profile claims to
-// populate the UI. Google's library has already verified the token before
-// handing it to us.
-function decodeJwt(token: string): Record<string, unknown> | null {
-  try {
-    const payload = token.split(".")[1];
-    const json = atob(payload.replace(/-/g, "+").replace(/_/g, "/"));
-    return JSON.parse(json) as Record<string, unknown>;
-  } catch {
-    return null;
-  }
-}
-
 export function AuthGate() {
-  const { gateOpen, closeGate, signIn, consumePendingAction } = useAuth();
+  const { gateOpen, closeGate, signInWithGoogle } = useAuth();
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!gateOpen) return;
@@ -41,20 +29,20 @@ export function AuthGate() {
 
   if (!gateOpen) return null;
 
-  const handleSuccess = (resp: CredentialResponse) => {
-    if (!resp.credential) return;
-    const claims = decodeJwt(resp.credential);
-    if (!claims) return;
-    const user: AuthUser = {
-      id: String(claims.sub ?? ""),
-      name: String(claims.name ?? "Friend"),
-      email: String(claims.email ?? ""),
-      avatarUrl: typeof claims.picture === "string" ? claims.picture : undefined,
-    };
-    signIn(user);
-    const pending = consumePendingAction();
-    closeGate();
-    pending?.();
+  const handleSignIn = async () => {
+    if (busy) return;
+    setBusy(true);
+    setError(null);
+    try {
+      // signInWithGoogle redirects the browser, so this promise typically
+      // resolves _during_ the navigation — we won't run the success
+      // handler. Errors before the redirect (popup blocked, network) come
+      // back here.
+      await signInWithGoogle();
+    } catch (err) {
+      setBusy(false);
+      setError(err instanceof Error ? err.message : "Sign-in failed.");
+    }
   };
 
   return (
@@ -112,17 +100,42 @@ export function AuthGate() {
           Sign in to save your workflows and access your canvas.
         </p>
 
-        <div className="flex justify-center">
-          <GoogleLogin
-            onSuccess={handleSuccess}
-            onError={() => { /* noop — user can retry by clicking again */ }}
-            theme="outline"
-            size="large"
-            text="continue_with"
-            shape="pill"
-            width="370"
-          />
-        </div>
+        <button
+          onClick={handleSignIn}
+          disabled={busy}
+          className="w-full hover:bg-[#F7FAF2] transition-colors flex items-center justify-center gap-3"
+          style={{
+            background: "#FFFFFF",
+            color: "#3B4953",
+            border: "1px solid #DBE3D5",
+            padding: "12px 16px",
+            borderRadius: 999,
+            fontSize: 14,
+            fontWeight: 500,
+            cursor: busy ? "wait" : "pointer",
+            opacity: busy ? 0.6 : 1,
+          }}
+        >
+          <GoogleGlyph />
+          {busy ? "Redirecting…" : "Continue with Google"}
+        </button>
+
+        {error && (
+          <div
+            style={{
+              marginTop: 12,
+              fontSize: 12,
+              color: "#8B2A2A",
+              background: "#FDECEC",
+              border: "1px solid #E5A8A8",
+              borderRadius: 8,
+              padding: "8px 12px",
+              lineHeight: 1.4,
+            }}
+          >
+            {error}
+          </div>
+        )}
 
         <div
           style={{
@@ -137,5 +150,18 @@ export function AuthGate() {
         </div>
       </div>
     </div>
+  );
+}
+
+// Inline SVG so the button matches the visual weight of the rest of the
+// modal without pulling in an icon dependency.
+function GoogleGlyph() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 18 18" aria-hidden focusable="false">
+      <path d="M17.64 9.2c0-.64-.06-1.25-.16-1.84H9v3.49h4.84a4.14 4.14 0 0 1-1.79 2.71v2.26h2.9c1.7-1.56 2.69-3.87 2.69-6.62z" fill="#4285F4" />
+      <path d="M9 18c2.43 0 4.47-.81 5.96-2.18l-2.9-2.26c-.8.54-1.83.86-3.06.86-2.35 0-4.34-1.59-5.05-3.72H.96v2.34A8.997 8.997 0 0 0 9 18z" fill="#34A853" />
+      <path d="M3.95 10.7c-.18-.54-.28-1.12-.28-1.7s.1-1.16.28-1.7V4.96H.96a8.996 8.996 0 0 0 0 8.08l2.99-2.34z" fill="#FBBC05" />
+      <path d="M9 3.58c1.32 0 2.51.45 3.44 1.35l2.58-2.58C13.46.89 11.43 0 9 0A8.997 8.997 0 0 0 .96 4.96l2.99 2.34C4.66 5.17 6.65 3.58 9 3.58z" fill="#EA4335" />
+    </svg>
   );
 }
