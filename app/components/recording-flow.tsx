@@ -10,6 +10,7 @@ import {
   Sparkles,
   X,
 } from "lucide-react";
+import { upload } from "@vercel/blob/client";
 import { AnimatedButterfly } from "./animated-butterfly";
 
 const dmSerif = { fontFamily: "var(--font-dm-serif), serif", fontStyle: "italic" as const };
@@ -1273,23 +1274,34 @@ export function RecordingFlow({
     setErrorReason(null);
     setStage("processing");
     try {
-      // Log size so we can rule out Vercel's 4.5MB body limit if a real
-      // recording fails on prod.
       console.info(
         `[recording-flow] uploading ${(reviewBlob.size / 1024 / 1024).toFixed(2)}MB ${reviewMime}, ${reviewDuration}s, transcript=${reviewTranscript.length}c`
       );
-      // Upload as multipart so the binary doesn't go through base64-in-JSON
-      // (which inflates by ~33% and JSON-parses poorly server-side).
-      const fd = new FormData();
-      const ext = reviewMime.includes("mp4") ? "mp4" : "webm";
-      fd.append("video", reviewBlob, `recording.${ext}`);
-      fd.append("transcript", reviewTranscript);
-      fd.append("durationSeconds", String(reviewDuration));
-      fd.append("mimeType", reviewMime);
 
+      // Step 1: client-direct upload to Vercel Blob. The browser hits our
+      // /api/blob-upload route to mint a token, then PUTs the recording
+      // straight to Blob storage — bypassing Vercel's 4.5MB function body
+      // cap that previously broke 30s+ recordings.
+      const ext = reviewMime.includes("mp4") ? "mp4" : "webm";
+      const filename = `recordings/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`;
+      const uploaded = await upload(filename, reviewBlob, {
+        access: "public",
+        handleUploadUrl: "/api/blob-upload",
+        contentType: reviewMime,
+      });
+
+      // Step 2: tell our API where to find the recording. Tiny JSON payload,
+      // no body-limit risk. The server fetches from Blob, ships to Gemini,
+      // and deletes the blob when done.
       const res = await fetch("/api/record-to-workflow", {
         method: "POST",
-        body: fd,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          blobUrl: uploaded.url,
+          transcript: reviewTranscript,
+          durationSeconds: reviewDuration,
+          mimeType: reviewMime,
+        }),
       });
       if (!res.ok) {
         // Try to surface the server's reason. For 413 Payload Too Large

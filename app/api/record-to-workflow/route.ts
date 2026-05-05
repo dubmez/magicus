@@ -1,5 +1,6 @@
 import { type NextRequest, NextResponse } from "next/server";
 import { GoogleGenAI, createPartFromUri, createUserContent, Type } from "@google/genai";
+import { del } from "@vercel/blob";
 
 // Vercel function config: Gemini calls for video can run 15-30s+, so bump the
 // max duration. (Hobby tier ceiling is 60s; we ask for 60.)
@@ -9,11 +10,7 @@ export const maxDuration = 60;
 // runtime has different streaming semantics and lower body limits.
 export const runtime = "nodejs";
 
-type GeneratedClassification =
-  | "automate"
-  | "human_review"
-  | "security_risk"
-  | "needs_standardisation";
+type GeneratedAutomationPotential = "high" | "medium" | "low";
 
 type GeneratedStep = {
   n: number;
@@ -21,7 +18,8 @@ type GeneratedStep = {
   note?: string;
   owner?: string;
   timestamp?: number; // seconds into the recording
-  classification?: GeneratedClassification;
+  automationPotential?: GeneratedAutomationPotential;
+  isSensitive?: boolean;
 };
 
 type GeneratedWorkflow = {
@@ -95,12 +93,13 @@ const responseSchema = {
           note: { type: Type.STRING, nullable: true },
           owner: { type: Type.STRING, nullable: true },
           timestamp: { type: Type.NUMBER, nullable: true },
-          classification: {
+          automationPotential: {
             type: Type.STRING,
-            enum: ["automate", "human_review", "security_risk", "needs_standardisation"],
+            enum: ["high", "medium", "low"],
           },
+          isSensitive: { type: Type.BOOLEAN, nullable: true },
         },
-        required: ["n", "text", "classification"],
+        required: ["n", "text", "automationPotential"],
       },
     },
     tools: { type: Type.ARRAY, items: { type: Type.STRING } },
@@ -126,12 +125,14 @@ CRITICAL RULES
 - "trigger" describes what kicks the workflow off. If the recording starts with the user explicitly opening something on a schedule or in response to an event, capture that. Otherwise leave it as { "type": "manual" }.
 - "why" is one or two sentences on the purpose of the workflow, drawn from narration if available — not a guess.
 
-For each step, set "classification" to one of:
-- "automate" — rule-based, safe for an agent to handle (parsing, scheduling, logging, sending templated messages)
-- "human_review" — judgment is required (evaluating fit, drafting custom outreach, handling exceptions)
-- "security_risk" — sensitive data or consequential actions (moving money, granting access, sending invoices, modifying production)
-- "needs_standardisation" — too variable across runs to automate reliably without further process work
-Be honest. Most workflows have a mix. If unsure between automate and human_review, prefer human_review.
+For each step, classify on TWO independent properties:
+- "automationPotential" — how automatable the mechanics of the step are, on its own:
+  - "high" — rule-based and deterministic (parsing, scheduling, logging, sending templated messages, calling an API with structured inputs)
+  - "medium" — automatable but benefits from human oversight (drafting from a template, scoring against rules, summarising for review)
+  - "low" — requires human judgement, taste, creativity, or live relationship context (qualifying ambiguous fit, writing personalised outreach, prioritising exceptions)
+- "isSensitive" — true if the step handles payment data, personal/identity data, legal commitments, access/permission changes, or consequential irreversible actions (sending invoices or contracts, moving money, granting access, modifying production). Otherwise omit it.
+
+These are ORTHOGONAL — a step that is easy to automate can still be sensitive (e.g. generating a Stripe invoice from a templated input is rule-based but moves money). Classify each property independently. Be honest. If unsure between high and medium, prefer medium.
 
 Return ONLY the JSON object. No prose around it.`;
 
@@ -217,28 +218,44 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  let video: File | null = null;
+  // The recording is uploaded to Vercel Blob client-side (Browser → Blob
+  // direct), then we get a JSON pointer here. This bypasses Vercel's 4.5MB
+  // function payload cap, which a 30s+ webm easily exceeds.
+  let blobUrl = "";
   let transcript = "";
   let durationSeconds = 0;
   let mimeType = "video/webm";
 
   try {
-    const form = await req.formData();
-    video = form.get("video") as File | null;
-    transcript = String(form.get("transcript") ?? "").trim();
-    durationSeconds = Number(form.get("durationSeconds") ?? 0);
-    mimeType = String(form.get("mimeType") ?? "video/webm");
+    const body = (await req.json()) as {
+      blobUrl?: string;
+      transcript?: string;
+      durationSeconds?: number;
+      mimeType?: string;
+    };
+    blobUrl = String(body.blobUrl ?? "").trim();
+    transcript = String(body.transcript ?? "").trim();
+    durationSeconds = Number(body.durationSeconds ?? 0);
+    mimeType = String(body.mimeType ?? "video/webm");
   } catch (err) {
-    console.error("[record-to-workflow] failed to parse FormData", err);
+    console.error("[record-to-workflow] failed to parse JSON", err);
     return NextResponse.json(
       { error: "Could not read the upload." },
       { status: 400 }
     );
   }
 
-  if (!video) {
+  if (!blobUrl) {
     return NextResponse.json(
       { error: "No recording attached." },
+      { status: 400 }
+    );
+  }
+  // Defensive — only allow URLs from our own Blob bucket so an attacker can't
+  // point us at an arbitrary host and use this route as a fetch proxy.
+  if (!/^https:\/\/[a-z0-9-]+\.public\.blob\.vercel-storage\.com\//.test(blobUrl)) {
+    return NextResponse.json(
+      { error: "Invalid recording location." },
       { status: 400 }
     );
   }
@@ -251,11 +268,28 @@ export async function POST(req: NextRequest) {
 
   const client = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 
+  // Always try to clean up the Blob after we're done — success or failure.
+  // Recordings are throwaway; we only need them long enough to forward to
+  // Gemini's File API. Wrapped so a delete failure can't mask the real
+  // error from the user.
+  const cleanupBlob = async () => {
+    try {
+      await del(blobUrl);
+    } catch (err) {
+      console.warn("[record-to-workflow] blob cleanup failed", err);
+    }
+  };
+
   try {
-    // Upload the recording to Gemini's File API. This handles videos of any
-    // size up to the per-key file storage limit; inline base64 caps at ~20MB.
+    // Pull the recording from Blob and stream it into Gemini's File API.
+    // (Gemini's SDK accepts a Blob/File-like for upload.)
+    const blobRes = await fetch(blobUrl);
+    if (!blobRes.ok) {
+      throw new Error(`Blob fetch failed: ${blobRes.status}`);
+    }
+    const videoBlob = await blobRes.blob();
     const uploaded = await client.files.upload({
-      file: video,
+      file: videoBlob,
       config: { mimeType },
     });
     if (!uploaded.name) {
@@ -316,9 +350,11 @@ export async function POST(req: NextRequest) {
     // Add the id last so the client can use it as-is.
     const workflow = { ...parsed, id: "rec" };
 
+    await cleanupBlob();
     return NextResponse.json({ workflow });
   } catch (err) {
     console.error("[record-to-workflow] gemini error", err);
+    await cleanupBlob();
     const e = err as ApiErrorLike;
     const msg = typeof e.message === "string" ? e.message : "";
     if (

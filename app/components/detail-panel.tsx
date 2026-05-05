@@ -14,25 +14,22 @@ import {
   Hand,
   AlertTriangle,
   Pencil,
+  Lock,
   Share2,
   MoreHorizontal,
 } from "lucide-react";
-import type { Workflow, Theme, Trigger, Step, StepClassification } from "@/lib/workflows";
+import type { Workflow, Theme, Trigger, Step, AutomationPotential } from "@/lib/workflows";
 import {
   THEME_META,
-  CLASSIFICATION_META,
+  POTENTIAL_META,
+  SENSITIVE_META,
   calculateAutomationScore,
 } from "@/lib/workflows";
 import { useAuth } from "@/lib/auth-context";
 
 const dmSerif = { fontFamily: "var(--font-dm-serif), serif", fontStyle: "italic" as const };
 
-const CLASSIFICATION_ORDER: StepClassification[] = [
-  "automate",
-  "human_review",
-  "security_risk",
-  "needs_standardisation",
-];
+const POTENTIAL_ORDER: AutomationPotential[] = ["high", "medium", "low"];
 
 // ─── Lightweight inline inputs (kept from previous panel) ──────────────────
 
@@ -563,30 +560,38 @@ function TriggerEditor({
   );
 }
 
-// ─── Classification tag + popover ──────────────────────────────────────────
-function ClassificationTag({
-  classification,
+// ─── Potential pill + popover ─────────────────────────────────────────────
+// Pill shows the automation-potential tier; the popover lets the user pick a
+// tier AND independently toggle the "sensitive" flag. Sensitive is rendered
+// separately in the row as a lock icon, not on the pill itself.
+function PotentialPill({
+  potential,
   overridden,
+  isSensitive,
   readOnly,
-  onPick,
+  onPickPotential,
+  onToggleSensitive,
 }: {
-  classification?: StepClassification;
+  potential?: AutomationPotential;
   overridden?: boolean;
+  isSensitive?: boolean;
   readOnly: boolean;
-  onPick: (next: StepClassification) => void;
+  onPickPotential: (next: AutomationPotential) => void;
+  onToggleSensitive: (next: boolean) => void;
 }) {
   const [open, setOpen] = useState(false);
   const [placement, setPlacement] = useState<"below" | "above">("below");
   const wrapRef = useRef<HTMLDivElement>(null);
 
-  // Choose above/below based on which side has more space.
+  // Choose above/below based on which side has more space. Popover is taller
+  // now that it includes the sensitive checkbox, so reserve more room.
   useEffect(() => {
     if (!open) return;
     const el = wrapRef.current;
     if (!el) return;
     const rect = el.getBoundingClientRect();
     const spaceBelow = window.innerHeight - rect.bottom;
-    setPlacement(spaceBelow < 220 && rect.top > 220 ? "above" : "below");
+    setPlacement(spaceBelow < 260 && rect.top > 260 ? "above" : "below");
   }, [open]);
 
   // Click-outside closes the popover without changes.
@@ -599,7 +604,7 @@ function ClassificationTag({
     return () => document.removeEventListener("mousedown", onDoc);
   }, [open]);
 
-  const meta = classification ? CLASSIFICATION_META[classification] : null;
+  const meta = potential ? POTENTIAL_META[potential] : null;
 
   return (
     <div ref={wrapRef} style={{ position: "relative", flexShrink: 0 }}>
@@ -645,16 +650,17 @@ function ClassificationTag({
             width: 280,
           }}
         >
-          {CLASSIFICATION_ORDER.map((c) => {
-            const m = CLASSIFICATION_META[c];
-            const selected = classification === c;
+          {POTENTIAL_ORDER.map((p) => {
+            const m = POTENTIAL_META[p];
+            const selected = potential === p;
             return (
               <button
-                key={c}
+                key={p}
                 onClick={(e) => {
                   e.stopPropagation();
-                  onPick(c);
-                  setOpen(false);
+                  onPickPotential(p);
+                  // Don't close — user may still want to toggle the sensitive
+                  // checkbox below. They can click outside or pick again.
                 }}
                 className="w-full flex items-start gap-2 transition-colors"
                 style={{
@@ -693,6 +699,51 @@ function ClassificationTag({
               </button>
             );
           })}
+
+          {/* Divider + orthogonal sensitive toggle. A step can be high
+              potential AND sensitive (e.g. Stripe invoice generation), so
+              this is independent of the tier picker above. */}
+          <div style={{ height: 1, background: "#EBF4DD", margin: "6px 4px" }} />
+          <label
+            className="w-full flex items-start gap-2 transition-colors"
+            style={{
+              borderRadius: 6,
+              padding: "8px 10px",
+              cursor: "pointer",
+            }}
+            onMouseEnter={(e) => {
+              (e.currentTarget as HTMLElement).style.background = "#F7FAF2";
+            }}
+            onMouseLeave={(e) => {
+              (e.currentTarget as HTMLElement).style.background = "transparent";
+            }}
+          >
+            <input
+              type="checkbox"
+              checked={!!isSensitive}
+              onChange={(e) => onToggleSensitive(e.target.checked)}
+              onClick={(e) => e.stopPropagation()}
+              style={{ marginTop: 3, accentColor: SENSITIVE_META.dot }}
+            />
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div
+                style={{
+                  fontSize: 12,
+                  color: "#3B4953",
+                  fontWeight: 500,
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: 4,
+                }}
+              >
+                <Lock size={10} style={{ color: SENSITIVE_META.fg }} />
+                {SENSITIVE_META.label}
+              </div>
+              <div style={{ fontSize: 11, color: "#90AB8B", lineHeight: 1.4, marginTop: 1 }}>
+                {SENSITIVE_META.description}
+              </div>
+            </div>
+          </label>
         </div>
       )}
     </div>
@@ -781,13 +832,31 @@ function StepRow({
         </div>
 
         <div className="flex items-start gap-2" style={{ marginTop: 2 }}>
-          <ClassificationTag
-            classification={step.classification}
-            overridden={step.classificationOverridden}
+          {step.isSensitive && (
+            <span
+              title={SENSITIVE_META.description}
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                justifyContent: "center",
+                color: SENSITIVE_META.fg,
+                marginTop: 4,
+                flexShrink: 0,
+              }}
+              aria-label={SENSITIVE_META.label}
+            >
+              <Lock size={11} />
+            </span>
+          )}
+          <PotentialPill
+            potential={step.automationPotential}
+            overridden={step.automationPotentialOverridden}
+            isSensitive={step.isSensitive}
             readOnly={readOnly}
-            onPick={(c) =>
-              onUpdate({ classification: c, classificationOverridden: true })
+            onPickPotential={(p) =>
+              onUpdate({ automationPotential: p, automationPotentialOverridden: true })
             }
+            onToggleSensitive={(v) => onUpdate({ isSensitive: v || undefined })}
           />
           {step.screenshot && (
             // eslint-disable-next-line @next/next/no-img-element
@@ -823,16 +892,18 @@ function StepRow({
 }
 
 // ─── Legend ────────────────────────────────────────────────────────────────
+// Three potential tiers (high/medium/low) plus a Sensitive item shown with
+// a lock icon so users can map the in-row affordance to its meaning.
 function Legend() {
   return (
     <div
       className="flex flex-wrap items-center gap-x-3 gap-y-1"
       style={{ marginTop: 16, fontSize: 11, color: "#90AB8B" }}
     >
-      {CLASSIFICATION_ORDER.map((c, i) => {
-        const m = CLASSIFICATION_META[c];
+      {POTENTIAL_ORDER.map((p) => {
+        const m = POTENTIAL_META[p];
         return (
-          <span key={c} className="flex items-center gap-1.5">
+          <span key={p} className="flex items-center gap-1.5">
             <span
               style={{
                 width: 7,
@@ -843,12 +914,14 @@ function Legend() {
               }}
             />
             {m.label}
-            {i < CLASSIFICATION_ORDER.length - 1 && (
-              <span style={{ marginLeft: 6, color: "#EBF4DD" }}>·</span>
-            )}
+            <span style={{ marginLeft: 6, color: "#EBF4DD" }}>·</span>
           </span>
         );
       })}
+      <span className="flex items-center gap-1.5" style={{ color: SENSITIVE_META.fg }}>
+        <Lock size={10} />
+        {SENSITIVE_META.label}
+      </span>
     </div>
   );
 }
@@ -1100,8 +1173,8 @@ export function DetailPanel({
     [workflow, update]
   );
 
-  // Score is derived from the steps' classifications. Whenever steps change,
-  // the score recomputes; the badge animates to the new value.
+  // Score is derived from the steps' automation potential. Whenever steps
+  // change, the score recomputes; the badge animates to the new value.
   const derivedScore = useMemo(
     () => (workflow ? calculateAutomationScore(workflow.steps) : 0),
     [workflow]

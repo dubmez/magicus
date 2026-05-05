@@ -2,85 +2,87 @@ export type Theme = "sales" | "marketing" | "operations" | "finance";
 
 export type IOItem = { name: string; source: string };
 
-// Classification of a step's automation suitability. The user can override
-// the model's pick; the overall workflow score is derived from these values.
-export type StepClassification =
-  | "automate"
-  | "human_review"
-  | "security_risk"
-  | "needs_standardisation";
+// How automatable a single step is, on its own merits.
+//   high   — rule-based, deterministic, no judgment needed
+//   medium — automatable but benefits from human oversight
+//   low    — requires human judgment, creativity, or relationship context
+// `isSensitive` is orthogonal: a step can be high-potential AND sensitive
+// (e.g. processing a templated payment is rule-based but moves money).
+export type AutomationPotential = "high" | "medium" | "low";
 
 export type Step = {
   n: number;
   text: string;
   note?: string;
   owner?: string;
-  // When the step came from a screen recording, this holds a data URL
-  // captured from the recording at the timestamp the model identified.
+  // Data URL captured from a screen recording at the model's chosen timestamp.
   screenshot?: string;
-  // The model classifies each step on first generation; the user can edit
-  // the classification, which both updates the badge and recomputes the
-  // workflow's overall automation score.
-  classification?: StepClassification;
-  classificationOverridden?: boolean;
+  // Model classifies on generation; user can edit which marks the override
+  // flag so the UI shows a dashed border + pencil affordance.
+  automationPotential?: AutomationPotential;
+  automationPotentialOverridden?: boolean;
+  // Independent flag — payment data, personal data, legal decisions,
+  // consequential irreversible actions. The lock icon in the UI is driven
+  // entirely by this.
+  isSensitive?: boolean;
 };
 
-const CLASSIFICATION_SCORES: Record<StepClassification, number> = {
-  automate: 100,
-  human_review: 50,
-  security_risk: 25,
-  needs_standardisation: 0,
+const POTENTIAL_SCORES: Record<AutomationPotential, number> = {
+  high: 100,
+  medium: 50,
+  low: 0,
 };
 
-// Compute the overall automation score from a workflow's classified steps.
-// Unclassified steps are excluded — better to skip them than to bake an
-// arbitrary default into the average.
+// Average across steps that have a potential set. Unclassified steps are
+// excluded so the score stays meaningful while a workflow is being built.
 export function calculateAutomationScore(steps: Step[]): number {
-  const classified = steps.filter((s) => s.classification);
-  if (classified.length === 0) return 0;
-  const total = classified.reduce(
-    (sum, s) => sum + CLASSIFICATION_SCORES[s.classification!],
+  const scored = steps.filter((s) => s.automationPotential);
+  if (scored.length === 0) return 0;
+  const total = scored.reduce(
+    (sum, s) => sum + POTENTIAL_SCORES[s.automationPotential!],
     0
   );
-  return Math.round(total / classified.length);
+  return Math.round(total / scored.length);
 }
 
-// UI metadata for each classification — colours used for tag pills, popover
-// dots, and the legend. Kept here so it's the single source of truth.
-export const CLASSIFICATION_META: Record<
-  StepClassification,
+// UI metadata for each automation-potential tier — pill colours, popover
+// dots, legend swatches. Single source of truth.
+export const POTENTIAL_META: Record<
+  AutomationPotential,
   { label: string; description: string; bg: string; fg: string; dot: string }
 > = {
-  automate: {
-    label: "Automate",
-    description: "Rule-based, safe for an agent to handle",
+  high: {
+    label: "High potential",
+    description: "Rule-based and safe to fully automate",
     bg: "#EBF4DD",
     fg: "#547863",
     dot: "#547863",
   },
-  human_review: {
-    label: "Human review",
-    description: "Judgment required — agent should pause",
+  medium: {
+    label: "Medium potential",
+    description: "Automatable but benefits from human oversight",
     bg: "#FEF3E2",
     fg: "#C99461",
     dot: "#C99461",
   },
-  security_risk: {
-    // Distinct red palette so this doesn't blend with human_review's amber.
-    // Reuses the same red we use for inline error banners elsewhere.
-    label: "Security risk",
-    description: "Sensitive data or consequential action",
-    bg: "#FDECEC",
-    fg: "#8B2A2A",
-    dot: "#C0392B",
-  },
-  needs_standardisation: {
-    label: "Needs standardisation",
-    description: "Too variable to automate reliably",
+  low: {
+    label: "Low potential",
+    description: "Requires human judgment or relationship context",
     bg: "#F1EFE8",
     fg: "#888780",
     dot: "#888780",
   },
+};
+
+// Sensitive flag UI metadata — used by the lock icon and legend item. Kept
+// here alongside POTENTIAL_META so the shared view, detail panel, and
+// butterfly card all read from one definition.
+export const SENSITIVE_META = {
+  label: "Sensitive",
+  description: "Contains payment data, personal data, or consequential actions",
+  // Muted red — same palette as inline error banners.
+  fg: "#8B2A2A",
+  dot: "#C0392B",
 };
 
 export type Trigger = {
@@ -194,8 +196,8 @@ export const THEME_META: Record<Theme, { label: string; dot: string }> = {
 
 // Examples shipped on the read-only Examples canvas. Three archetype playbooks
 // of three workflows each, laid out as horizontal chains stacked vertically.
-// Classifications are LLM-generated (classificationOverridden is left
-// undefined which the UI treats as not overridden).
+// Automation potentials are seeded as if LLM-generated (override flag left
+// undefined so the UI treats them as not user-edited).
 //
 // Layout: each chain is a row at y = 0 / 700 / 1400, columns at x = 0 / 800 / 1600.
 export const initialWorkflows: Workflow[] = [
@@ -211,11 +213,11 @@ export const initialWorkflows: Workflow[] = [
       { name: "ICP criteria", source: "Notion" },
     ],
     steps: [
-      { n: 1, text: "Check submission in Gmail", classification: "automate" },
-      { n: 2, text: "Score lead against ICP in Notion doc", note: "Judgment call on fit", classification: "human_review" },
-      { n: 3, text: "If qualified, add to HubSpot CRM with tags", classification: "automate" },
-      { n: 4, text: "Send personalised intro email from Gmail template", classification: "automate" },
-      { n: 5, text: "Set follow-up reminder in HubSpot", classification: "automate" },
+      { n: 1, text: "Check submission in Gmail", automationPotential: "high" },
+      { n: 2, text: "Score lead against ICP in Notion doc", note: "Judgment call on fit", automationPotential: "low" },
+      { n: 3, text: "If qualified, add to HubSpot CRM with tags", automationPotential: "high" },
+      { n: 4, text: "Send personalised intro email from Gmail template", automationPotential: "medium" },
+      { n: 5, text: "Set follow-up reminder in HubSpot", automationPotential: "high" },
     ],
     outputs: [
       { name: "New contact in HubSpot", source: "HubSpot" },
@@ -239,12 +241,12 @@ export const initialWorkflows: Workflow[] = [
       { name: "Brand voice doc", source: "Notion" },
     ],
     steps: [
-      { n: 1, text: "Export published article from Ghost", classification: "automate" },
-      { n: 2, text: "Paste into Claude and generate 5 tweet variants", classification: "automate" },
-      { n: 3, text: "Review and select best tweet", note: "Tone and relevance check", classification: "human_review" },
-      { n: 4, text: "Schedule selected tweet in Buffer", classification: "automate" },
-      { n: 5, text: "Generate LinkedIn post variant and save as draft", classification: "automate" },
-      { n: 6, text: "Add article to Notion content archive", classification: "automate" },
+      { n: 1, text: "Export published article from Ghost", automationPotential: "high" },
+      { n: 2, text: "Paste into Claude and generate 5 tweet variants", automationPotential: "high" },
+      { n: 3, text: "Review and select best tweet", note: "Tone and relevance check", automationPotential: "low" },
+      { n: 4, text: "Schedule selected tweet in Buffer", automationPotential: "high" },
+      { n: 5, text: "Generate LinkedIn post variant and save as draft", automationPotential: "high" },
+      { n: 6, text: "Add article to Notion content archive", automationPotential: "high" },
     ],
     outputs: [
       { name: "Scheduled tweet", source: "Buffer" },
@@ -268,11 +270,11 @@ export const initialWorkflows: Workflow[] = [
       { name: "Client billing details", source: "Stripe" },
     ],
     steps: [
-      { n: 1, text: "Pull completed projects from Notion tracker", classification: "automate" },
-      { n: 2, text: "Generate invoice in Stripe for each project", classification: "automate" },
-      { n: 3, text: "Send invoice email with personalised note", note: "Check amounts and add personal note", classification: "human_review" },
-      { n: 4, text: "Log invoice in Airtable revenue tracker", classification: "automate" },
-      { n: 5, text: "Set payment follow-up reminder if unpaid after 7 days", classification: "automate" },
+      { n: 1, text: "Pull completed projects from Notion tracker", automationPotential: "high" },
+      { n: 2, text: "Generate invoice in Stripe for each project", automationPotential: "high", isSensitive: true },
+      { n: 3, text: "Send invoice email with personalised note", note: "Check amounts and add personal note", automationPotential: "medium", isSensitive: true },
+      { n: 4, text: "Log invoice in Airtable revenue tracker", automationPotential: "high" },
+      { n: 5, text: "Set payment follow-up reminder if unpaid after 7 days", automationPotential: "high" },
     ],
     outputs: [
       { name: "Invoice sent", source: "Stripe" },
@@ -299,12 +301,12 @@ export const initialWorkflows: Workflow[] = [
       { name: "Company research", source: "Perplexity" },
     ],
     steps: [
-      { n: 1, text: "Pull account firmographics from Apollo", classification: "automate" },
-      { n: 2, text: "Research recent company news via Perplexity", classification: "automate" },
-      { n: 3, text: "Score account against ICP rubric", classification: "automate" },
-      { n: 4, text: "Write personalised first-touch email using research", note: "Approve before sending", classification: "human_review" },
-      { n: 5, text: "Enrol in HubSpot sequence", classification: "automate" },
-      { n: 6, text: "Assign to SDR and log in Slack channel", classification: "automate" },
+      { n: 1, text: "Pull account firmographics from Apollo", automationPotential: "high" },
+      { n: 2, text: "Research recent company news via Perplexity", automationPotential: "high" },
+      { n: 3, text: "Score account against ICP rubric", automationPotential: "medium" },
+      { n: 4, text: "Write personalised first-touch email using research", note: "Approve before sending", automationPotential: "low" },
+      { n: 5, text: "Enrol in HubSpot sequence", automationPotential: "high" },
+      { n: 6, text: "Assign to SDR and log in Slack channel", automationPotential: "high" },
     ],
     outputs: [
       { name: "Personalised email sent", source: "Gmail" },
@@ -329,13 +331,13 @@ export const initialWorkflows: Workflow[] = [
       { name: "Deal data", source: "HubSpot" },
     ],
     steps: [
-      { n: 1, text: "Pull call notes from Fireflies transcript", classification: "automate" },
-      { n: 2, text: "Extract key pain points and requirements", classification: "automate" },
-      { n: 3, text: "Generate first draft proposal in Google Docs using template", classification: "automate" },
-      { n: 4, text: "AE reviews and edits proposal", note: "Customise pricing and scope", classification: "human_review" },
-      { n: 5, text: "Send proposal via DocuSign", classification: "automate" },
-      { n: 6, text: "Update HubSpot deal with proposal link and expected close date", classification: "automate" },
-      { n: 7, text: "Notify sales manager in Slack", classification: "automate" },
+      { n: 1, text: "Pull call notes from Fireflies transcript", automationPotential: "high" },
+      { n: 2, text: "Extract key pain points and requirements", automationPotential: "medium" },
+      { n: 3, text: "Generate first draft proposal in Google Docs using template", automationPotential: "medium" },
+      { n: 4, text: "AE reviews and edits proposal", note: "Customise pricing and scope", automationPotential: "low" },
+      { n: 5, text: "Send proposal via DocuSign", automationPotential: "high", isSensitive: true },
+      { n: 6, text: "Update HubSpot deal with proposal link and expected close date", automationPotential: "high" },
+      { n: 7, text: "Notify sales manager in Slack", automationPotential: "high" },
     ],
     outputs: [
       { name: "Proposal sent", source: "DocuSign" },
@@ -359,11 +361,11 @@ export const initialWorkflows: Workflow[] = [
       { name: "Last week's review doc", source: "Notion" },
     ],
     steps: [
-      { n: 1, text: "Pull all open deals from HubSpot", classification: "automate" },
-      { n: 2, text: "Flag deals with no activity in 7+ days", classification: "automate" },
-      { n: 3, text: "Generate pipeline summary doc in Notion", classification: "automate" },
-      { n: 4, text: "Add manager commentary on flagged deals", note: "Add context and next actions", classification: "human_review" },
-      { n: 5, text: "Post summary to #revenue Slack channel", classification: "automate" },
+      { n: 1, text: "Pull all open deals from HubSpot", automationPotential: "high" },
+      { n: 2, text: "Flag deals with no activity in 7+ days", automationPotential: "high" },
+      { n: 3, text: "Generate pipeline summary doc in Notion", automationPotential: "high" },
+      { n: 4, text: "Add manager commentary on flagged deals", note: "Add context and next actions", automationPotential: "low" },
+      { n: 5, text: "Post summary to #revenue Slack channel", automationPotential: "high" },
     ],
     outputs: [
       { name: "Pipeline summary", source: "Notion" },
@@ -390,12 +392,12 @@ export const initialWorkflows: Workflow[] = [
       { name: "Onboarding template", source: "Notion" },
     ],
     steps: [
-      { n: 1, text: "Create client workspace in Notion from template", classification: "automate" },
-      { n: 2, text: "Set up client Slack channel and invite team", classification: "automate" },
-      { n: 3, text: "Send welcome email with onboarding doc link", classification: "automate" },
-      { n: 4, text: "Schedule kickoff call in Calendly", classification: "automate" },
-      { n: 5, text: "Create onboarding project in Asana with default tasks", classification: "automate" },
-      { n: 6, text: "Brief internal team in Slack with client context", note: "Add strategic context before sending", classification: "human_review" },
+      { n: 1, text: "Create client workspace in Notion from template", automationPotential: "high" },
+      { n: 2, text: "Set up client Slack channel and invite team", automationPotential: "high" },
+      { n: 3, text: "Send welcome email with onboarding doc link", automationPotential: "high" },
+      { n: 4, text: "Schedule kickoff call in Calendly", automationPotential: "high" },
+      { n: 5, text: "Create onboarding project in Asana with default tasks", automationPotential: "high" },
+      { n: 6, text: "Brief internal team in Slack with client context", note: "Add strategic context before sending", automationPotential: "medium" },
     ],
     outputs: [
       { name: "Client workspace", source: "Notion" },
@@ -422,13 +424,13 @@ export const initialWorkflows: Workflow[] = [
       { name: "Support tickets", source: "Intercom" },
     ],
     steps: [
-      { n: 1, text: "Pull product usage data from Mixpanel for all active accounts", classification: "automate" },
-      { n: 2, text: "Flag accounts below engagement threshold", classification: "automate" },
-      { n: 3, text: "Check NPS scores submitted in last 30 days", classification: "automate" },
-      { n: 4, text: "Cross-reference with open support tickets in Intercom", classification: "automate" },
-      { n: 5, text: "CSM reviews flagged accounts and decides action", note: "Prioritise and assign interventions", classification: "human_review" },
-      { n: 6, text: "Log health scores and actions in HubSpot", classification: "automate" },
-      { n: 7, text: "Send at-risk account alerts to CSM Slack channel", classification: "automate" },
+      { n: 1, text: "Pull product usage data from Mixpanel for all active accounts", automationPotential: "high" },
+      { n: 2, text: "Flag accounts below engagement threshold", automationPotential: "high" },
+      { n: 3, text: "Check NPS scores submitted in last 30 days", automationPotential: "high" },
+      { n: 4, text: "Cross-reference with open support tickets in Intercom", automationPotential: "high" },
+      { n: 5, text: "CSM reviews flagged accounts and decides action", note: "Prioritise and assign interventions", automationPotential: "low" },
+      { n: 6, text: "Log health scores and actions in HubSpot", automationPotential: "high" },
+      { n: 7, text: "Send at-risk account alerts to CSM Slack channel", automationPotential: "high" },
     ],
     outputs: [
       { name: "Health score log", source: "HubSpot" },
@@ -453,13 +455,13 @@ export const initialWorkflows: Workflow[] = [
       { name: "NPS history", source: "HubSpot" },
     ],
     steps: [
-      { n: 1, text: "Pull account usage summary from Mixpanel", classification: "automate" },
-      { n: 2, text: "Identify expansion signals — seats, feature adoption, NPS", classification: "automate" },
-      { n: 3, text: "Generate renewal talking points doc in Notion", classification: "automate" },
-      { n: 4, text: "CSM reviews and adds relationship context", note: "Personalise based on relationship history", classification: "human_review" },
-      { n: 5, text: "Send renewal outreach email from HubSpot template", classification: "automate" },
-      { n: 6, text: "Schedule renewal call via Calendly", classification: "automate" },
-      { n: 7, text: "Log renewal status and next steps in HubSpot", classification: "automate" },
+      { n: 1, text: "Pull account usage summary from Mixpanel", automationPotential: "high" },
+      { n: 2, text: "Identify expansion signals — seats, feature adoption, NPS", automationPotential: "medium" },
+      { n: 3, text: "Generate renewal talking points doc in Notion", automationPotential: "medium" },
+      { n: 4, text: "CSM reviews and adds relationship context", note: "Personalise based on relationship history", automationPotential: "low" },
+      { n: 5, text: "Send renewal outreach email from HubSpot template", automationPotential: "medium" },
+      { n: 6, text: "Schedule renewal call via Calendly", automationPotential: "high" },
+      { n: 7, text: "Log renewal status and next steps in HubSpot", automationPotential: "high" },
     ],
     outputs: [
       { name: "Talking points doc", source: "Notion" },

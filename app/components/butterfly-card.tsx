@@ -1,8 +1,8 @@
 "use client";
 
-import { Zap, Link2, AlertCircle } from "lucide-react";
+import { Zap, Link2, AlertCircle, Lock } from "lucide-react";
 import type { Step } from "@/lib/workflows";
-import { calculateAutomationScore } from "@/lib/workflows";
+import { calculateAutomationScore, SENSITIVE_META } from "@/lib/workflows";
 
 type IOItem = { name: string; source: string };
 
@@ -69,8 +69,8 @@ export function ButterflyCard({
     ? "drop-shadow(0px 6px 28px rgba(59, 73, 83, 0.18))"
     : "drop-shadow(0px 4px 24px rgba(59, 73, 83, 0.12))";
 
-  // Score is derived from step classifications when present; falls back to
-  // any stored value (kept around for legacy workflows that haven't been
+  // Score is derived from step automation potentials when present; falls back
+  // to any stored value (kept around for legacy workflows that haven't been
   // classified yet).
   const derivedScore = calculateAutomationScore(data.steps);
   const effectiveScore = derivedScore > 0 ? derivedScore : (data.automationScore ?? 0);
@@ -309,6 +309,20 @@ export function ButterflyCard({
                       </div>
                     )}
                   </div>
+                  {t.isSensitive && (
+                    <span
+                      title={SENSITIVE_META.description}
+                      aria-label={SENSITIVE_META.label}
+                      style={{
+                        display: "inline-flex",
+                        color: SENSITIVE_META.fg,
+                        flexShrink: 0,
+                        marginTop: 2,
+                      }}
+                    >
+                      <Lock size={compact ? 9 : 11} />
+                    </span>
+                  )}
                 </div>
                 {t.note && !compact && (
                   <div

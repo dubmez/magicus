@@ -505,7 +505,7 @@ export function ShareModal({
               onChange={(v) => setRedactions((r) => ({ ...r, tools: !v }))}
             />
             <ToggleRow
-              label="Step classifications & readiness score"
+              label="Automation potential & readiness score"
               visible={!redactions.classifications}
               onChange={(v) => setRedactions((r) => ({ ...r, classifications: !v }))}
             />

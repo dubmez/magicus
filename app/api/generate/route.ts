@@ -27,12 +27,14 @@ Rules:
 6. When generating a chain, the FIRST workflow keeps its real trigger (schedule/event/manual). Downstream workflows in the chain MUST have trigger.type = "chained" and no description, since the connection itself is the trigger. Use the connection's "label" to describe the handoff (e.g. "Lead qualified", "Draft approved").
 7. Theme must be one of: sales, marketing, operations, finance. Pick based on the workflow's domain.
 8. automationScore is a 0-100 estimate of how much of this workflow could realistically be automated. Be honest — work that requires human judgement should score lower.
-9. For each step, set "classification" to one of:
-   - "automate" — rule-based, safe for an agent to handle (e.g. parsing, scheduling, logging, sending templated messages)
-   - "human_review" — judgment is required (e.g. evaluating fit, drafting custom outreach, exceptions)
-   - "security_risk" — sensitive data or consequential actions (e.g. moving money, granting access, sending invoices)
-   - "needs_standardisation" — too variable across runs to automate reliably without further process work
-   Be honest. Most workflows have a mix. If unsure between automate and human_review, prefer human_review.
+9. For each step, classify on TWO independent properties:
+   - "automationPotential" — how automatable the mechanics of the step are, on its own:
+     - "high" — rule-based and deterministic (parsing, scheduling, logging, sending templated messages, calling an API with structured inputs)
+     - "medium" — automatable but benefits from human oversight (drafting from a template, scoring against rules, summarising for review)
+     - "low" — requires human judgement, taste, creativity, or live relationship context (qualifying ambiguous fit, writing personalised outreach, prioritising exceptions)
+   - "isSensitive" — true if the step handles payment data, personal/identity data, legal commitments, access/permission changes, or consequential irreversible actions (sending invoices or contracts, moving money, granting access, modifying production). Otherwise omit it.
+
+   These are ORTHOGONAL — a step can be high-potential AND sensitive (e.g. generating a Stripe invoice from a templated input is rule-based but moves money). Classify each property independently. Be honest. If unsure between high and medium, prefer medium.
 
 Return the structured workflow object. Do not include prose outside the structured response.`;
 
@@ -40,11 +42,7 @@ type GeneratedTrigger =
   | { type: "schedule" | "event" | "manual" | "chained"; description?: string }
   | null;
 
-type GeneratedClassification =
-  | "automate"
-  | "human_review"
-  | "security_risk"
-  | "needs_standardisation";
+type GeneratedAutomationPotential = "high" | "medium" | "low";
 
 type GeneratedWorkflow = {
   id: string;
@@ -58,7 +56,8 @@ type GeneratedWorkflow = {
     text: string;
     note?: string;
     owner?: string;
-    classification?: GeneratedClassification;
+    automationPotential?: GeneratedAutomationPotential;
+    isSensitive?: boolean;
   }[];
   outputs: { name: string; source: string }[];
   tools: string[];
@@ -116,12 +115,13 @@ const anthropicTool = {
                   text: { type: "string" },
                   note: { type: "string" },
                   owner: { type: "string" },
-                  classification: {
+                  automationPotential: {
                     type: "string",
-                    enum: ["automate", "human_review", "security_risk", "needs_standardisation"],
+                    enum: ["high", "medium", "low"],
                   },
+                  isSensitive: { type: "boolean" },
                 },
-                required: ["n", "text", "classification"],
+                required: ["n", "text", "automationPotential"],
               },
             },
             outputs: {
@@ -207,12 +207,13 @@ const geminiSchema = {
                 text: { type: Type.STRING },
                 note: { type: Type.STRING, nullable: true },
                 owner: { type: Type.STRING, nullable: true },
-                classification: {
+                automationPotential: {
                   type: Type.STRING,
-                  enum: ["automate", "human_review", "security_risk", "needs_standardisation"],
+                  enum: ["high", "medium", "low"],
                 },
+                isSensitive: { type: Type.BOOLEAN, nullable: true },
               },
-              required: ["n", "text", "classification"],
+              required: ["n", "text", "automationPotential"],
             },
           },
           outputs: {

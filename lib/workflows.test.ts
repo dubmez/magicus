@@ -4,17 +4,22 @@ import {
   computeChains,
   chainKey,
   inferChainName,
-  CLASSIFICATION_META,
+  POTENTIAL_META,
+  SENSITIVE_META,
   type Step,
   type Workflow,
   type Connection,
-  type StepClassification,
+  type AutomationPotential,
 } from "./workflows";
 
 // Helper: a Step with sensible defaults so tests can override only the field
 // under test.
-function step(n: number, classification?: StepClassification, text = ""): Step {
-  return { n, text: text || `Step ${n}`, classification };
+function step(
+  n: number,
+  automationPotential?: AutomationPotential,
+  text = ""
+): Step {
+  return { n, text: text || `Step ${n}`, automationPotential };
 }
 
 // Helper: a minimal Workflow used by chain-naming tests.
@@ -37,55 +42,64 @@ function wf(id: string, name: string, x: number, theme: Workflow["theme"] = "sal
 }
 
 describe("calculateAutomationScore", () => {
-  it("returns 0 when no steps are classified", () => {
+  it("returns 0 when no steps have a potential set", () => {
     expect(calculateAutomationScore([])).toBe(0);
     expect(calculateAutomationScore([step(1), step(2)])).toBe(0);
   });
 
-  it("returns 100 when every step is automate", () => {
+  it("returns 100 when every step is high potential", () => {
     expect(
       calculateAutomationScore([
-        step(1, "automate"),
-        step(2, "automate"),
-        step(3, "automate"),
+        step(1, "high"),
+        step(2, "high"),
+        step(3, "high"),
       ])
     ).toBe(100);
   });
 
-  it("returns 0 when every step is needs_standardisation", () => {
+  it("returns 0 when every step is low potential", () => {
     expect(
-      calculateAutomationScore([
-        step(1, "needs_standardisation"),
-        step(2, "needs_standardisation"),
-      ])
+      calculateAutomationScore([step(1, "low"), step(2, "low")])
     ).toBe(0);
   });
 
-  it("uses the spec'd weighted average (100/50/25/0)", () => {
-    // automate=100 + human_review=50 = 150 / 2 = 75
+  it("uses the spec'd weighted average (100/50/0)", () => {
+    // high=100 + medium=50 = 150 / 2 = 75
     expect(
-      calculateAutomationScore([step(1, "automate"), step(2, "human_review")])
+      calculateAutomationScore([step(1, "high"), step(2, "medium")])
     ).toBe(75);
-    // automate=100 + security_risk=25 = 125 / 2 = 62.5 → rounds to 63
+    // high=100 + low=0 = 100 / 2 = 50
     expect(
-      calculateAutomationScore([step(1, "automate"), step(2, "security_risk")])
-    ).toBe(63);
+      calculateAutomationScore([step(1, "high"), step(2, "low")])
+    ).toBe(50);
   });
 
-  it("excludes unclassified steps from the average rather than treating them as 0", () => {
-    // 1 automate among 3 steps; only the classified one counts → 100
+  it("excludes unscored steps from the average rather than treating them as 0", () => {
+    // 1 high among 3 steps; only the scored one counts → 100
     expect(
-      calculateAutomationScore([step(1, "automate"), step(2), step(3)])
+      calculateAutomationScore([step(1, "high"), step(2), step(3)])
     ).toBe(100);
+  });
+
+  it("ignores isSensitive when computing the score", () => {
+    // Sensitive flag is orthogonal — it must not affect the automation score.
+    const a: Step = { n: 1, text: "a", automationPotential: "high" };
+    const b: Step = {
+      n: 2,
+      text: "b",
+      automationPotential: "high",
+      isSensitive: true,
+    };
+    expect(calculateAutomationScore([a, b])).toBe(100);
   });
 
   it("rounds to the nearest integer", () => {
     // 50 + 50 + 100 = 200 / 3 = 66.666… → rounds to 67
     expect(
       calculateAutomationScore([
-        step(1, "human_review"),
-        step(2, "human_review"),
-        step(3, "automate"),
+        step(1, "medium"),
+        step(2, "medium"),
+        step(3, "high"),
       ])
     ).toBe(67);
   });
@@ -187,29 +201,31 @@ describe("inferChainName", () => {
   });
 });
 
-describe("CLASSIFICATION_META", () => {
-  it("covers every classification value", () => {
-    const expected: StepClassification[] = [
-      "automate",
-      "human_review",
-      "security_risk",
-      "needs_standardisation",
-    ];
-    for (const c of expected) {
-      expect(CLASSIFICATION_META[c]).toBeDefined();
-      expect(CLASSIFICATION_META[c].label).toBeTruthy();
-      expect(CLASSIFICATION_META[c].description).toBeTruthy();
-      expect(CLASSIFICATION_META[c].bg).toMatch(/^#[0-9A-F]{6}$/i);
-      expect(CLASSIFICATION_META[c].fg).toMatch(/^#[0-9A-F]{6}$/i);
-      expect(CLASSIFICATION_META[c].dot).toMatch(/^#[0-9A-F]{6}$/i);
+describe("POTENTIAL_META", () => {
+  it("covers every automation-potential tier", () => {
+    const expected: AutomationPotential[] = ["high", "medium", "low"];
+    for (const p of expected) {
+      expect(POTENTIAL_META[p]).toBeDefined();
+      expect(POTENTIAL_META[p].label).toBeTruthy();
+      expect(POTENTIAL_META[p].description).toBeTruthy();
+      expect(POTENTIAL_META[p].bg).toMatch(/^#[0-9A-F]{6}$/i);
+      expect(POTENTIAL_META[p].fg).toMatch(/^#[0-9A-F]{6}$/i);
+      expect(POTENTIAL_META[p].dot).toMatch(/^#[0-9A-F]{6}$/i);
     }
   });
 
-  it("gives security_risk a distinct background from human_review", () => {
-    // Regression guard for the UX review fix where the two were
-    // visually indistinguishable.
-    expect(CLASSIFICATION_META.security_risk.bg).not.toBe(
-      CLASSIFICATION_META.human_review.bg
-    );
+  it("uses distinct backgrounds for each tier", () => {
+    expect(POTENTIAL_META.high.bg).not.toBe(POTENTIAL_META.medium.bg);
+    expect(POTENTIAL_META.medium.bg).not.toBe(POTENTIAL_META.low.bg);
+    expect(POTENTIAL_META.high.bg).not.toBe(POTENTIAL_META.low.bg);
+  });
+});
+
+describe("SENSITIVE_META", () => {
+  it("provides label, description, and palette colours", () => {
+    expect(SENSITIVE_META.label).toBeTruthy();
+    expect(SENSITIVE_META.description).toBeTruthy();
+    expect(SENSITIVE_META.fg).toMatch(/^#[0-9A-F]{6}$/i);
+    expect(SENSITIVE_META.dot).toMatch(/^#[0-9A-F]{6}$/i);
   });
 });

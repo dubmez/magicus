@@ -11,8 +11,8 @@ function workflow(overrides: Partial<Workflow> = {}): Workflow {
     why: "Process incoming events",
     inputs: [{ name: "Event", source: "Stripe" }],
     steps: [
-      { n: 1, text: "Receive event", classification: "automate" },
-      { n: 2, text: "Notify team", note: "Only if amount > $500", owner: "Ops", classification: "human_review" },
+      { n: 1, text: "Receive event", automationPotential: "high" },
+      { n: 2, text: "Notify team", note: "Only if amount > $500", owner: "Ops", automationPotential: "low" },
     ],
     outputs: [{ name: "Notification", source: "Slack" }],
     tools: ["Stripe", "Slack"],

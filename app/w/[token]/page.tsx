@@ -3,14 +3,25 @@
 import { useEffect, useMemo, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
-import { ArrowRight, Download, Clock, Zap, Hand, Link2, AlertTriangle } from "lucide-react";
+import {
+  ArrowRight,
+  Download,
+  Clock,
+  Zap,
+  Hand,
+  Link2,
+  AlertTriangle,
+  Lock,
+} from "lucide-react";
 import {
   type Workflow,
   type Step,
   THEME_META,
-  CLASSIFICATION_META,
+  POTENTIAL_META,
+  SENSITIVE_META,
   calculateAutomationScore,
 } from "@/lib/workflows";
+import { ButterflyCard } from "@/app/components/butterfly-card";
 import {
   getShare,
   incrementRemixCount,
@@ -79,29 +90,64 @@ function PublicHeader() {
   );
 }
 
-// ─── Step row (read-only) ─────────────────────────────────────────────────
+// ─── Readiness legend (3 potential tiers + sensitive) ─────────────────────
+function ReadinessLegend() {
+  return (
+    <div
+      className="flex flex-wrap items-center gap-x-3 gap-y-1"
+      style={{ fontSize: 11, color: "#90AB8B" }}
+    >
+      {(["high", "medium", "low"] as const).map((p) => {
+        const m = POTENTIAL_META[p];
+        return (
+          <span key={p} className="flex items-center gap-1.5">
+            <span
+              style={{
+                width: 7,
+                height: 7,
+                borderRadius: 999,
+                background: m.dot,
+                display: "inline-block",
+              }}
+            />
+            {m.label}
+            <span style={{ marginLeft: 6, color: "#EBF4DD" }}>·</span>
+          </span>
+        );
+      })}
+      <span className="flex items-center gap-1.5" style={{ color: SENSITIVE_META.fg }}>
+        <Lock size={10} />
+        {SENSITIVE_META.label}
+      </span>
+    </div>
+  );
+}
+
+// ─── Scribe-style step card ───────────────────────────────────────────────
+// Full-width card with the screenshot as a hero image. Number, text, and
+// metadata stack underneath.
 function PublicStepRow({
   step,
   hidden,
-  showClassification,
+  showPotential,
 }: {
   step: Step;
   hidden: boolean;
-  showClassification: boolean;
+  showPotential: boolean;
 }) {
   if (hidden) {
     return (
       <li
         style={{
           background: "#F1EFE8",
-          borderRadius: 10,
-          padding: "12px 14px",
+          borderRadius: 12,
+          padding: "14px 16px",
           color: "#90AB8B",
           fontStyle: "italic",
           fontSize: 13,
           display: "flex",
           alignItems: "center",
-          gap: 10,
+          gap: 12,
           filter: "blur(0.4px)",
         }}
       >
@@ -109,10 +155,10 @@ function PublicStepRow({
           style={{
             background: "#90AB8B",
             color: "#FFFFFF",
-            fontSize: 10,
+            fontSize: 11,
             fontWeight: 600,
-            width: 20,
-            height: 20,
+            width: 24,
+            height: 24,
             borderRadius: 999,
             display: "inline-flex",
             alignItems: "center",
@@ -126,99 +172,127 @@ function PublicStepRow({
       </li>
     );
   }
-  const meta = step.classification ? CLASSIFICATION_META[step.classification] : null;
+
+  const meta = step.automationPotential ? POTENTIAL_META[step.automationPotential] : null;
+
   return (
     <li
       style={{
-        background: "#F7FAF2",
-        borderRadius: 10,
-        padding: "12px 14px",
+        background: "#FFFFFF",
+        borderRadius: 12,
+        border: "1px solid #EBF4DD",
+        overflow: "hidden",
       }}
     >
-      <div className="flex items-start gap-3">
-        <span
+      {step.screenshot && (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img
+          src={step.screenshot}
+          alt={`Step ${step.n} screenshot`}
           style={{
-            background: "#3B4953",
-            color: "#EBF4DD",
-            fontSize: 11,
-            fontWeight: 600,
-            width: 22,
-            height: 22,
-            borderRadius: 999,
-            display: "inline-flex",
-            alignItems: "center",
-            justifyContent: "center",
-            flexShrink: 0,
-            marginTop: 1,
+            width: "100%",
+            display: "block",
+            background: "#F1EFE8",
+            borderBottom: "1px solid #EBF4DD",
           }}
-        >
-          {step.n}
-        </span>
-        <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ fontSize: 14, color: "#3B4953", fontWeight: 500, lineHeight: 1.4 }}>
-            {step.text}
-          </div>
-          {step.note && (
-            <div
-              style={{
-                ...dmSerif,
-                fontSize: 12,
-                color: "#90AB8B",
-                marginTop: 4,
-                fontStyle: "italic",
-              }}
-            >
-              {step.note}
-            </div>
-          )}
-          {step.owner && (
-            <div
-              style={{
-                display: "inline-block",
-                marginTop: 8,
-                fontSize: 11,
-                color: "#547863",
-                background: "#EBF4DD",
-                padding: "2px 9px",
-                borderRadius: 999,
-              }}
-            >
-              {step.owner}
-            </div>
-          )}
-        </div>
-        {showClassification && meta && (
+        />
+      )}
+      <div style={{ padding: "16px 18px" }}>
+        <div className="flex items-start gap-3">
           <span
             style={{
-              background: meta.bg,
-              color: meta.fg,
-              border: `1px solid ${meta.fg}4D`,
-              padding: "2px 8px",
+              background: "#3B4953",
+              color: "#EBF4DD",
+              fontSize: 12,
+              fontWeight: 600,
+              width: 26,
+              height: 26,
               borderRadius: 999,
-              fontSize: 10,
-              fontWeight: 500,
+              display: "inline-flex",
+              alignItems: "center",
+              justifyContent: "center",
               flexShrink: 0,
-              whiteSpace: "nowrap",
+              marginTop: 1,
             }}
           >
-            {meta.label}
+            {step.n}
           </span>
-        )}
-        {step.screenshot && (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img
-            src={step.screenshot}
-            alt={`Frame for step ${step.n}`}
-            style={{
-              width: 80,
-              height: 50,
-              objectFit: "cover",
-              borderRadius: 6,
-              border: "1px solid #EBF4DD",
-              flexShrink: 0,
-            }}
-          />
-        )}
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div
+              style={{
+                fontSize: 15,
+                color: "#3B4953",
+                fontWeight: 500,
+                lineHeight: 1.4,
+              }}
+            >
+              {step.text}
+            </div>
+            {step.note && (
+              <div
+                style={{
+                  ...dmSerif,
+                  fontSize: 12,
+                  color: "#90AB8B",
+                  marginTop: 6,
+                  fontStyle: "italic",
+                  lineHeight: 1.5,
+                }}
+              >
+                {step.note}
+              </div>
+            )}
+            <div className="flex flex-wrap items-center gap-2" style={{ marginTop: 10 }}>
+              {step.owner && (
+                <span
+                  style={{
+                    fontSize: 11,
+                    color: "#547863",
+                    background: "#EBF4DD",
+                    padding: "2px 9px",
+                    borderRadius: 999,
+                  }}
+                >
+                  {step.owner}
+                </span>
+              )}
+              {step.isSensitive && (
+                <span
+                  className="flex items-center gap-1"
+                  title={SENSITIVE_META.description}
+                  style={{
+                    fontSize: 10,
+                    color: SENSITIVE_META.fg,
+                    background: "#FBE8E8",
+                    border: `1px solid ${SENSITIVE_META.fg}33`,
+                    padding: "2px 8px",
+                    borderRadius: 999,
+                    fontWeight: 500,
+                  }}
+                >
+                  <Lock size={10} />
+                  {SENSITIVE_META.label}
+                </span>
+              )}
+              {showPotential && meta && (
+                <span
+                  style={{
+                    background: meta.bg,
+                    color: meta.fg,
+                    border: `1px solid ${meta.fg}4D`,
+                    padding: "2px 8px",
+                    borderRadius: 999,
+                    fontSize: 10,
+                    fontWeight: 500,
+                    whiteSpace: "nowrap",
+                  }}
+                >
+                  {meta.label}
+                </span>
+              )}
+            </div>
+          </div>
+        </div>
       </div>
     </li>
   );
@@ -234,12 +308,37 @@ function ShareBody({ settings }: { settings: ShareSettings }) {
   const score = useMemo(() => calculateAutomationScore(workflow.steps), [workflow.steps]);
   const themeMeta = THEME_META[workflow.theme];
 
-  const visibleSteps = workflow.steps; // We show all, but mark redacted as [Hidden]
   const visibleInputs = workflow.inputs.filter(
     (_, i) => !redactions.hiddenInputIndices.includes(i)
   );
   const visibleOutputs = workflow.outputs.filter(
     (_, i) => !redactions.hiddenOutputIndices.includes(i)
+  );
+
+  // The hero butterfly card mirrors what the recipient would see on the
+  // canvas: it must respect redactions, so we hide redacted steps/IO from
+  // the hero rendering rather than blanking them in place (since the card is
+  // a glanceable summary, not a stepwise transcript).
+  const heroData = useMemo(
+    () => ({
+      name: workflow.name,
+      inputs: visibleInputs,
+      outputs: visibleOutputs,
+      tools: redactions.tools ? [] : workflow.tools,
+      steps: workflow.steps.filter(
+        (s) => !redactions.hiddenStepNumbers.includes(s.n)
+      ),
+      automationScore: redactions.classifications ? 0 : score,
+    }),
+    [
+      workflow,
+      visibleInputs,
+      visibleOutputs,
+      redactions.tools,
+      redactions.hiddenStepNumbers,
+      redactions.classifications,
+      score,
+    ]
   );
 
   const triggerLabel = workflow.trigger
@@ -269,10 +368,6 @@ function ShareBody({ settings }: { settings: ShareSettings }) {
     doRemix();
   };
 
-  // Build a non-redacted clone, write it through to localStorage, navigate
-  // to the canvas. We don't have direct access to page.tsx state from a
-  // separate route, so we set a 'pending remix' key that page.tsx picks up
-  // on mount.
   const doRemix = () => {
     const cloned: Workflow = {
       id: `wf-${Date.now()}`,
@@ -287,8 +382,10 @@ function ShareBody({ settings }: { settings: ShareSettings }) {
         .map((s, i) => ({
           ...s,
           n: i + 1,
-          // Strip classification if it was redacted in the share
-          classification: redactions.classifications ? undefined : s.classification,
+          // Strip automation potential and sensitive flag if redacted in the
+          // share so the remixer starts fresh on a hidden classification.
+          automationPotential: redactions.classifications ? undefined : s.automationPotential,
+          isSensitive: redactions.classifications ? undefined : s.isSensitive,
         })),
       tools: redactions.tools ? [] : workflow.tools,
       automationScore: 0,
@@ -302,20 +399,16 @@ function ShareBody({ settings }: { settings: ShareSettings }) {
       },
     };
 
-    // Hand off to page.tsx via a localStorage 'inbox' the canvas reads on
-    // mount. This avoids cross-route state plumbing.
     try {
       localStorage.setItem("magicus:pending-remix", JSON.stringify(cloned));
     } catch { /* localStorage refused — proceed anyway */ }
 
     incrementRemixCount(settings.token);
     setRemixed(true);
-    // Brief moment so the user sees the toast register before navigating.
     setTimeout(() => router.push("/"), 600);
   };
 
   const handleExport = () => {
-    // Build a redacted-respecting clone, export as markdown.
     const cloned: Workflow = {
       ...workflow,
       trigger: redactions.triggerDescription ? null : workflow.trigger,
@@ -337,6 +430,10 @@ function ShareBody({ settings }: { settings: ShareSettings }) {
     URL.revokeObjectURL(url);
   };
 
+  const visibleStepCount = workflow.steps.filter(
+    (s) => !redactions.hiddenStepNumbers.includes(s.n)
+  ).length;
+
   return (
     <main
       style={{
@@ -348,26 +445,71 @@ function ShareBody({ settings }: { settings: ShareSettings }) {
     >
       <div
         style={{
-          maxWidth: 720,
+          maxWidth: 880,
           margin: "0 auto",
-          padding: "48px 24px 64px",
+          padding: "40px 24px 64px",
         }}
       >
-        {/* Header section */}
+        {/* Contributor byline — establishes provenance up top */}
+        <div
+          className="flex items-center gap-2"
+          style={{ fontSize: 13, color: "#90AB8B", marginBottom: 24 }}
+        >
+          {sharedBy.avatarUrl ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={sharedBy.avatarUrl}
+              alt=""
+              referrerPolicy="no-referrer"
+              style={{ width: 26, height: 26, borderRadius: 999, border: "1px solid #EBF4DD" }}
+            />
+          ) : (
+            <span
+              style={{
+                width: 26,
+                height: 26,
+                borderRadius: 999,
+                background: "#547863",
+                color: "#FFFFFF",
+                fontSize: 12,
+                fontWeight: 600,
+                display: "inline-flex",
+                alignItems: "center",
+                justifyContent: "center",
+              }}
+            >
+              {sharedBy.name?.[0]?.toUpperCase() ?? "?"}
+            </span>
+          )}
+          <span>
+            <strong style={{ color: "#3B4953", fontWeight: 600 }}>{sharedBy.name}</strong>
+            {" "}shared this workflow
+          </span>
+          {remixCount > 0 && (
+            <>
+              <span style={{ color: "#EBF4DD" }}>·</span>
+              <span>
+                Remixed by {remixCount} {remixCount === 1 ? "person" : "people"}
+              </span>
+            </>
+          )}
+        </div>
+
+        {/* Workflow header */}
         <div style={{ marginBottom: 28 }}>
           <h1
             style={{
               ...dmSerif,
-              fontSize: 32,
+              fontSize: 38,
               color: "#3B4953",
-              lineHeight: 1.15,
-              letterSpacing: -0.5,
-              marginBottom: 12,
+              lineHeight: 1.1,
+              letterSpacing: -0.6,
+              marginBottom: 14,
             }}
           >
             {workflow.name}
           </h1>
-          <div className="flex flex-wrap items-center gap-2" style={{ marginBottom: 14 }}>
+          <div className="flex flex-wrap items-center gap-2" style={{ marginBottom: 6 }}>
             <span
               className="flex items-center gap-1.5"
               style={{
@@ -385,7 +527,53 @@ function ShareBody({ settings }: { settings: ShareSettings }) {
               <span style={{ width: 7, height: 7, borderRadius: 999, background: themeMeta.dot }} />
               {themeMeta.label}
             </span>
-            {!redactions.classifications && (
+            <span
+              className="flex items-center gap-1.5"
+              style={{
+                fontSize: 13,
+                color: "#547863",
+              }}
+            >
+              <TriggerIcon size={13} style={{ flexShrink: 0 }} />
+              <span>{triggerLabel}</span>
+            </span>
+          </div>
+        </div>
+
+        {/* Hero butterfly card — full width within the page max-width */}
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "center",
+            marginBottom: 36,
+          }}
+        >
+          <ButterflyCard data={heroData} />
+        </div>
+
+        {/* Readiness section */}
+        {!redactions.classifications && (
+          <section
+            style={{
+              background: "#FFFFFF",
+              border: "1px solid #EBF4DD",
+              borderRadius: 14,
+              padding: "20px 22px",
+              marginBottom: 36,
+            }}
+          >
+            <div className="flex items-center justify-between" style={{ marginBottom: 12 }}>
+              <h2
+                style={{
+                  fontSize: 11,
+                  fontWeight: 600,
+                  color: "#547863",
+                  letterSpacing: 1.4,
+                  textTransform: "uppercase",
+                }}
+              >
+                Readiness
+              </h2>
               <span
                 className="flex items-center gap-1"
                 style={{
@@ -401,72 +589,14 @@ function ShareBody({ settings }: { settings: ShareSettings }) {
                 <Zap size={11} fill="#EBF4DD" strokeWidth={0} />
                 {score}%
               </span>
-            )}
-          </div>
-          <div className="flex items-center gap-2" style={{ fontSize: 14, color: "#547863", marginBottom: 20 }}>
-            <TriggerIcon size={14} style={{ flexShrink: 0 }} />
-            <span>{triggerLabel}</span>
-          </div>
-
-          {/* Shared by */}
-          <div className="flex items-center gap-2" style={{ fontSize: 13, color: "#90AB8B" }}>
-            {sharedBy.avatarUrl ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img
-                src={sharedBy.avatarUrl}
-                alt=""
-                referrerPolicy="no-referrer"
-                style={{ width: 22, height: 22, borderRadius: 999, border: "1px solid #EBF4DD" }}
-              />
-            ) : (
-              <span
-                style={{
-                  width: 22,
-                  height: 22,
-                  borderRadius: 999,
-                  background: "#547863",
-                  color: "#FFFFFF",
-                  fontSize: 11,
-                  fontWeight: 600,
-                  display: "inline-flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                }}
-              >
-                {sharedBy.name?.[0]?.toUpperCase() ?? "?"}
-              </span>
-            )}
-            <span>Shared by {sharedBy.name}</span>
-            {remixCount > 0 && (
-              <>
-                <span style={{ color: "#EBF4DD" }}>·</span>
-                <span>Remixed by {remixCount} {remixCount === 1 ? "person" : "people"}</span>
-              </>
-            )}
-          </div>
-        </div>
-
-        {/* Readiness bar (hidden if classifications redacted) */}
-        {!redactions.classifications && (
-          <div style={{ marginBottom: 36 }}>
-            <div
-              style={{
-                fontSize: 9,
-                fontWeight: 600,
-                color: "#90AB8B",
-                letterSpacing: 1.4,
-                textTransform: "uppercase",
-                marginBottom: 6,
-              }}
-            >
-              Readiness
             </div>
             <div
               style={{
-                height: 5,
+                height: 6,
                 background: "#EBF4DD",
                 borderRadius: 999,
                 overflow: "hidden",
+                marginBottom: 14,
               }}
             >
               <div
@@ -477,24 +607,25 @@ function ShareBody({ settings }: { settings: ShareSettings }) {
                 }}
               />
             </div>
+            <ReadinessLegend />
             {workflow.automationRationale && (
-              <div
+              <p
                 style={{
                   ...dmSerif,
                   fontSize: 13,
                   color: "#90AB8B",
-                  marginTop: 8,
-                  lineHeight: 1.5,
+                  marginTop: 14,
+                  lineHeight: 1.6,
                 }}
               >
                 {workflow.automationRationale}
-              </div>
+              </p>
             )}
-          </div>
+          </section>
         )}
 
-        {/* Steps */}
-        <section style={{ marginBottom: 36 }}>
+        {/* Steps — Scribe-style */}
+        <section style={{ marginBottom: 40 }}>
           <h2
             style={{
               fontSize: 11,
@@ -502,18 +633,18 @@ function ShareBody({ settings }: { settings: ShareSettings }) {
               color: "#547863",
               letterSpacing: 1.4,
               textTransform: "uppercase",
-              marginBottom: 12,
+              marginBottom: 14,
             }}
           >
-            Steps
+            Steps · {visibleStepCount}
           </h2>
-          <ol className="flex flex-col gap-2" style={{ listStyle: "none", padding: 0 }}>
-            {visibleSteps.map((s) => (
+          <ol className="flex flex-col gap-3" style={{ listStyle: "none", padding: 0 }}>
+            {workflow.steps.map((s) => (
               <PublicStepRow
                 key={s.n}
                 step={s}
                 hidden={redactions.hiddenStepNumbers.includes(s.n)}
-                showClassification={!redactions.classifications}
+                showPotential={!redactions.classifications}
               />
             ))}
           </ol>
@@ -534,7 +665,7 @@ function ShareBody({ settings }: { settings: ShareSettings }) {
             >
               Purpose
             </h2>
-            <p style={{ fontSize: 14, color: "#3B4953", lineHeight: 1.6 }}>
+            <p style={{ fontSize: 15, color: "#3B4953", lineHeight: 1.6 }}>
               {workflow.why}
             </p>
           </section>
@@ -757,6 +888,9 @@ export default function SharePage() {
     setSettings(found ?? "missing");
     if (found) {
       // Bump document.title for browser tabs / share previews on social.
+      // (Real OG meta would need server-side data; shares are localStorage
+      // only at the moment, so the static <head> values from layout.tsx
+      // act as a stub for now.)
       document.title = `${found.workflow.name} — Magicus`;
     } else {
       document.title = "Workflow not found — Magicus";
