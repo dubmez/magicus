@@ -36,6 +36,11 @@ yarn-error.log*
 # vercel
 .vercel
 
+# supabase CLI local state — project ref is in config.toml, the rest is
+# cache/version metadata that shouldn't be committed
+supabase/.temp/
+supabase/.branches/
+
 # typescript
 *.tsbuildinfo
 next-env.d.ts
