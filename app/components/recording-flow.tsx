@@ -1281,38 +1281,65 @@ export function RecordingFlow({
       // clean Content-Type for the Blob put + downstream Gemini handling.
       const baseMime = reviewMime.split(";")[0].trim() || "video/webm";
 
-      // Step 1: chunked upload through our own API. We split the recording
-      // into ~3.5MB pieces (well under Vercel's 4.5MB function body cap),
-      // POST each one as a binary body, and the server `put()`s it to
-      // Vercel Blob. This bypasses both the function-body limit and the
-      // CORS preflight failures we hit with `@vercel/blob/client`.
-      const CHUNK_SIZE = 3.5 * 1024 * 1024;
-      const sessionId = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
-      const totalChunks = Math.max(1, Math.ceil(reviewBlob.size / CHUNK_SIZE));
-      const blobUrls: string[] = [];
-      for (let i = 0; i < totalChunks; i++) {
-        const start = i * CHUNK_SIZE;
-        const end = Math.min(start + CHUNK_SIZE, reviewBlob.size);
-        const chunk = reviewBlob.slice(start, end, baseMime);
-        const chunkRes = await fetch("/api/record-chunk", {
-          method: "POST",
-          headers: {
-            "Content-Type": baseMime,
-            "x-session-id": sessionId,
-            "x-chunk-seq": String(i),
-          },
-          body: chunk,
-        });
-        if (!chunkRes.ok) {
-          const text = await chunkRes.text().catch(() => "");
-          throw new Error(`Chunk ${i + 1}/${totalChunks} upload failed (${chunkRes.status})${text ? `: ${text.slice(0, 120)}` : ""}`);
+      // Run chunk upload and fallback frame extraction in parallel — the
+      // first is bandwidth-bound, the second is CPU-bound, so they overlap
+      // cleanly. Frames are only used if Gemini hits its quota; sending
+      // them every time costs ~1MB but lets the server fall back to Claude
+      // without a second round trip.
+      const FALLBACK_FRAME_COUNT = 10;
+      const fallbackTimestamps = Array.from(
+        { length: FALLBACK_FRAME_COUNT },
+        (_, i) => ((i + 1) * reviewDuration) / (FALLBACK_FRAME_COUNT + 1)
+      );
+
+      const uploadChunks = async (): Promise<string[]> => {
+        const CHUNK_SIZE = 3.5 * 1024 * 1024;
+        const sessionId = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+        const totalChunks = Math.max(1, Math.ceil(reviewBlob.size / CHUNK_SIZE));
+        const urls: string[] = [];
+        for (let i = 0; i < totalChunks; i++) {
+          const start = i * CHUNK_SIZE;
+          const end = Math.min(start + CHUNK_SIZE, reviewBlob.size);
+          const chunk = reviewBlob.slice(start, end, baseMime);
+          const chunkRes = await fetch("/api/record-chunk", {
+            method: "POST",
+            headers: {
+              "Content-Type": baseMime,
+              "x-session-id": sessionId,
+              "x-chunk-seq": String(i),
+            },
+            body: chunk,
+          });
+          if (!chunkRes.ok) {
+            const text = await chunkRes.text().catch(() => "");
+            throw new Error(`Chunk ${i + 1}/${totalChunks} upload failed (${chunkRes.status})${text ? `: ${text.slice(0, 120)}` : ""}`);
+          }
+          const { url } = (await chunkRes.json()) as { url: string };
+          urls.push(url);
         }
-        const { url } = (await chunkRes.json()) as { url: string };
-        blobUrls.push(url);
-      }
+        return urls;
+      };
+
+      const extractFallbackFrames = async (): Promise<{ timestamp: number; dataUrl: string }[]> => {
+        // Sequential — extractFrame creates a new <video> element and seeks,
+        // and concurrent seeks on the same blob fight each other.
+        const out: { timestamp: number; dataUrl: string }[] = [];
+        for (const t of fallbackTimestamps) {
+          const dataUrl = await extractFrame(reviewBlob, t).catch(() => null);
+          if (dataUrl) out.push({ timestamp: t, dataUrl });
+        }
+        return out;
+      };
+
+      const [blobUrls, fallbackFrames] = await Promise.all([
+        uploadChunks(),
+        extractFallbackFrames(),
+      ]);
 
       // Step 2: tell our API where the chunks live. Server fetches them,
-      // concatenates, ships to Gemini, then deletes them all.
+      // concatenates, ships to Gemini, then deletes them all. The fallback
+      // frames ride along so the server can re-attempt via Claude if
+      // Gemini's free-tier quota is exhausted.
       const res = await fetch("/api/record-to-workflow", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -1321,6 +1348,7 @@ export function RecordingFlow({
           transcript: reviewTranscript,
           durationSeconds: reviewDuration,
           mimeType: baseMime,
+          fallbackFrames,
         }),
       });
       if (!res.ok) {

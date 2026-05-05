@@ -1,6 +1,7 @@
 import { type NextRequest, NextResponse } from "next/server";
 import { GoogleGenAI, createPartFromUri, createUserContent, Type } from "@google/genai";
 import { del, get } from "@vercel/blob";
+import Anthropic from "@anthropic-ai/sdk";
 
 // Vercel function config: Gemini calls for video can run 15-30s+, so bump the
 // max duration. (Hobby tier ceiling is 60s; we ask for 60.)
@@ -164,6 +165,20 @@ function isOverloaded(err: unknown): boolean {
   );
 }
 
+// 429 RESOURCE_EXHAUSTED — Gemini's free-tier daily/minute quotas. When this
+// trips we route the request to Claude instead. Same project means 2.5 and
+// 2.0 typically share quota state, so retrying within Gemini is pointless.
+function isQuotaExhausted(err: unknown): boolean {
+  const e = err as ApiErrorLike;
+  return (
+    e.status === 429 ||
+    (typeof e.message === "string" &&
+      (e.message.includes("RESOURCE_EXHAUSTED") ||
+        e.message.includes("429") ||
+        e.message.includes("exceeded your current quota")))
+  );
+}
+
 // Gemini 2.5 Flash returns 503 UNAVAILABLE when the model is overloaded.
 // One automatic retry with a 1.2s backoff catches the common case where the
 // spike clears in seconds.
@@ -210,6 +225,135 @@ async function generateWithFallback(
   }
 }
 
+// ─── Claude fallback ──────────────────────────────────────────────────────
+//
+// Used when Gemini's free tier 429s. Claude can't watch video, so the
+// client extracts ~10 evenly-spaced frames and ships them alongside the
+// transcript. Lower fidelity than Gemini's continuous video read, but the
+// narration carries most of the semantic load anyway.
+
+const anthropicTool = {
+  name: "generate_workflow",
+  description: "Output the structured workflow extracted from the screen recording frames.",
+  input_schema: {
+    type: "object" as const,
+    properties: {
+      name: { type: "string" },
+      theme: { type: "string", enum: ["sales", "marketing", "operations", "finance"] },
+      trigger: {
+        type: ["object", "null"],
+        properties: {
+          type: { type: "string", enum: ["schedule", "event", "manual", "chained"] },
+          description: { type: "string" },
+        },
+        required: ["type"],
+      },
+      why: { type: "string" },
+      inputs: {
+        type: "array",
+        items: {
+          type: "object",
+          properties: { name: { type: "string" }, source: { type: "string" } },
+          required: ["name", "source"],
+        },
+      },
+      steps: {
+        type: "array",
+        items: {
+          type: "object",
+          properties: {
+            n: { type: "integer" },
+            text: { type: "string" },
+            note: { type: "string" },
+            owner: { type: "string" },
+            timestamp: { type: "number" },
+            automationPotential: { type: "string", enum: ["high", "medium", "low"] },
+            isSensitive: { type: "boolean" },
+          },
+          required: ["n", "text", "automationPotential"],
+        },
+      },
+      outputs: {
+        type: "array",
+        items: {
+          type: "object",
+          properties: { name: { type: "string" }, source: { type: "string" } },
+          required: ["name", "source"],
+        },
+      },
+      tools: { type: "array", items: { type: "string" } },
+      automationScore: { type: "integer", minimum: 0, maximum: 100 },
+      automationRationale: { type: "string" },
+    },
+    required: [
+      "name", "theme", "trigger", "why", "inputs", "outputs",
+      "steps", "tools", "automationScore", "automationRationale",
+    ],
+  },
+};
+
+type FallbackFrame = { timestamp: number; dataUrl: string };
+
+async function generateWithClaude(
+  frames: FallbackFrame[],
+  transcript: string
+): Promise<GeneratedWorkflow> {
+  if (frames.length === 0) {
+    throw new Error("No fallback frames available for Claude path");
+  }
+  const client = new Anthropic();
+
+  type ImageMedia = "image/jpeg" | "image/png" | "image/webp" | "image/gif";
+  const imageBlocks = frames.map((f) => {
+    const m = /^data:image\/(jpeg|png|webp|gif);base64,(.+)$/.exec(f.dataUrl);
+    if (!m) throw new Error("Invalid frame data URL");
+    return {
+      type: "image" as const,
+      source: {
+        type: "base64" as const,
+        media_type: `image/${m[1]}` as ImageMedia,
+        data: m[2],
+      },
+    };
+  });
+
+  const timestampList = frames
+    .map((f) => f.timestamp.toFixed(1))
+    .join(", ");
+
+  const userContent: Anthropic.Messages.ContentBlockParam[] = [
+    {
+      type: "text",
+      text:
+        `Here are ${frames.length} frames captured at evenly-spaced timestamps from a screen recording of a business workflow. The user narrated as they worked.\n\n` +
+        `Frame timestamps in seconds (in order shown): ${timestampList}.\n\n` +
+        `When you set "timestamp" on a step, pick the timestamp of the frame that best shows that step happening.`,
+    },
+    ...imageBlocks,
+    {
+      type: "text",
+      text: transcript
+        ? `User narration transcript:\n"""\n${transcript}\n"""`
+        : "(No narration was captured. Work from the frames alone, and leave 'why' empty if you cannot tell why this workflow exists.)",
+    },
+  ];
+
+  const response = await client.messages.create({
+    model: "claude-sonnet-4-6",
+    max_tokens: 4000,
+    system: [{ type: "text", text: SYSTEM_PROMPT, cache_control: { type: "ephemeral" } }],
+    tools: [anthropicTool],
+    tool_choice: { type: "tool", name: "generate_workflow" },
+    messages: [{ role: "user", content: userContent }],
+  });
+
+  const toolUse = response.content.find((b) => b.type === "tool_use");
+  if (!toolUse || toolUse.type !== "tool_use") {
+    throw new Error("Claude did not return a tool_use response");
+  }
+  return toolUse.input as GeneratedWorkflow;
+}
+
 export async function POST(req: NextRequest) {
   if (!process.env.GEMINI_API_KEY) {
     return NextResponse.json(
@@ -220,11 +364,14 @@ export async function POST(req: NextRequest) {
 
   // The recording is uploaded as ~3.5MB chunks to /api/record-chunk and
   // then handed to us as a list of blob URLs. We pull each chunk from Blob,
-  // concatenate, and forward to Gemini.
+  // concatenate, and forward to Gemini. The client also extracts ~10
+  // evenly-spaced frames in case Gemini hits its quota and we need to
+  // re-attempt via Claude (which can't accept video natively).
   let blobUrls: string[] = [];
   let transcript = "";
   let durationSeconds = 0;
   let mimeType = "video/webm";
+  let fallbackFrames: FallbackFrame[] = [];
 
   try {
     const body = (await req.json()) as {
@@ -232,11 +379,21 @@ export async function POST(req: NextRequest) {
       transcript?: string;
       durationSeconds?: number;
       mimeType?: string;
+      fallbackFrames?: FallbackFrame[];
     };
     blobUrls = Array.isArray(body.blobUrls) ? body.blobUrls : [];
     transcript = String(body.transcript ?? "").trim();
     durationSeconds = Number(body.durationSeconds ?? 0);
     mimeType = String(body.mimeType ?? "video/webm");
+    fallbackFrames = Array.isArray(body.fallbackFrames)
+      ? body.fallbackFrames.filter(
+          (f): f is FallbackFrame =>
+            !!f &&
+            typeof f.timestamp === "number" &&
+            typeof f.dataUrl === "string" &&
+            f.dataUrl.startsWith("data:image/")
+        )
+      : [];
   } catch (err) {
     console.error("[record-to-workflow] failed to parse JSON", err);
     return NextResponse.json(
@@ -329,23 +486,40 @@ export async function POST(req: NextRequest) {
           : "(No narration was captured. Work from the video alone, and leave 'why' empty if you cannot tell why this workflow exists.)"),
     });
 
-    const response = await generateWithFallback(
-      client,
-      createUserContent(userPromptParts)
-    );
-
-    const text = response.text;
-    if (!text) throw new Error("Empty response from model");
-
     let parsed: GeneratedWorkflow;
     try {
-      parsed = JSON.parse(text) as GeneratedWorkflow;
-    } catch (err) {
-      console.error("[record-to-workflow] JSON parse failed", err, text.slice(0, 500));
-      return NextResponse.json(
-        { error: "Model response could not be parsed." },
-        { status: 502 }
+      const response = await generateWithFallback(
+        client,
+        createUserContent(userPromptParts)
       );
+      const text = response.text;
+      if (!text) throw new Error("Empty response from model");
+      try {
+        parsed = JSON.parse(text) as GeneratedWorkflow;
+      } catch (err) {
+        console.error("[record-to-workflow] JSON parse failed", err, text.slice(0, 500));
+        await cleanupBlob();
+        return NextResponse.json(
+          { error: "Model response could not be parsed." },
+          { status: 502 }
+        );
+      }
+    } catch (err) {
+      // Gemini quota exhausted? Try Claude with the client-supplied frames.
+      // Other Gemini failures (overload, file processing, parse errors)
+      // bubble up to the outer catch.
+      if (
+        isQuotaExhausted(err) &&
+        fallbackFrames.length > 0 &&
+        process.env.ANTHROPIC_API_KEY
+      ) {
+        console.warn(
+          "[record-to-workflow] Gemini quota exhausted — falling back to Claude"
+        );
+        parsed = await generateWithClaude(fallbackFrames, transcript);
+      } else {
+        throw err;
+      }
     }
 
     // Sanity check the parsed shape — if Gemini returns something off-schema
@@ -400,6 +574,17 @@ export async function POST(req: NextRequest) {
       return NextResponse.json(
         { error: "Recording took too long to process — please try again." },
         { status: 504 }
+      );
+    }
+    // Quota exhausted with no fallback configured/available — surface a
+    // user-friendly message rather than the generic 500.
+    if (isQuotaExhausted(err)) {
+      return NextResponse.json(
+        {
+          error:
+            "Both Gemini and our Claude fallback couldn't process the recording right now — please try again shortly or describe your workflow in text instead.",
+        },
+        { status: 503 }
       );
     }
     return NextResponse.json(
