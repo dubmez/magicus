@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import Link from "next/link";
 import { Sparkles, Send, Loader2, X, ArrowRight, Mic, AlertCircle, AlertTriangle } from "lucide-react";
 import { useRequireAuth } from "@/lib/auth-context";
 
@@ -433,9 +434,11 @@ export function Landing({
           zIndex: 50,
         }}
       >
-        <div
+        <Link
+          href="/"
+          aria-label="Go home"
           className="absolute flex items-center gap-3"
-          style={{ top: 28, left: 32 }}
+          style={{ top: 28, left: 32, textDecoration: "none" }}
         >
           <div
             style={{
@@ -456,7 +459,7 @@ export function Landing({
           <div style={{ ...dmSerif, fontSize: 22, color: "#3B4953" }}>
             magicus
           </div>
-        </div>
+        </Link>
         {content}
       </div>
     );

@@ -33,6 +33,21 @@ import { workflowToMarkdown } from "@/lib/markdown";
 const dmSerif = { fontFamily: "var(--font-dm-serif), serif", fontStyle: "italic" as const };
 const dmSans = { fontFamily: "var(--font-dm-sans), sans-serif" };
 
+// Set or update a `<meta>` tag in <head>. We use this to swap in the
+// actual workflow title/description after reading from localStorage.
+// Crawlers see the static stub from layout.tsx; humans pasting the URL
+// into a fresh tab still get a sensible title in their tab strip.
+function upsertMeta(attr: "name" | "property", key: string, value: string) {
+  if (typeof document === "undefined") return;
+  let el = document.head.querySelector<HTMLMetaElement>(`meta[${attr}="${key}"]`);
+  if (!el) {
+    el = document.createElement("meta");
+    el.setAttribute(attr, key);
+    document.head.appendChild(el);
+  }
+  el.setAttribute("content", value);
+}
+
 // ─── Header ────────────────────────────────────────────────────────────────
 function PublicHeader() {
   return (
@@ -887,11 +902,23 @@ export default function SharePage() {
     const found = getShare(token);
     setSettings(found ?? "missing");
     if (found) {
-      // Bump document.title for browser tabs / share previews on social.
-      // (Real OG meta would need server-side data; shares are localStorage
-      // only at the moment, so the static <head> values from layout.tsx
-      // act as a stub for now.)
-      document.title = `${found.workflow.name} — Magicus`;
+      // Build a content-aware title + description from the actual workflow.
+      // (Server-side OG remains the static stub from layout.tsx, since
+      // shares are localStorage-only and the server can't read them — but
+      // browser tabs and runtime preview tools that re-evaluate `<head>`
+      // get the real content.)
+      const w = found.workflow;
+      const title = `${w.name} — Magicus`;
+      // Prefer the rationale; fall back to a templated summary so the meta
+      // is never blank.
+      const fallbackDesc = `A ${w.theme} workflow by ${found.sharedBy.name} — ${w.automationScore}% automatable. Built on Magicus.`;
+      const description = (w.automationRationale || "").trim() || fallbackDesc;
+
+      document.title = title;
+      upsertMeta("property", "og:title", title);
+      upsertMeta("property", "og:description", description);
+      upsertMeta("name", "twitter:title", title);
+      upsertMeta("name", "twitter:description", description);
     } else {
       document.title = "Workflow not found — Magicus";
     }

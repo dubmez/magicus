@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import Link from "next/link";
 import {
   Pause,
   Play,
@@ -434,7 +435,12 @@ function PrepScreen({
         className="flex items-center justify-between"
         style={{ padding: "24px 32px" }}
       >
-        <div className="flex items-center gap-3">
+        <Link
+          href="/"
+          aria-label="Go home"
+          className="flex items-center gap-3"
+          style={{ textDecoration: "none" }}
+        >
           <div
             style={{
               width: 28,
@@ -454,7 +460,7 @@ function PrepScreen({
           <div style={{ ...dmSerif, fontSize: 22, color: "#3B4953", letterSpacing: -0.2 }}>
             magicus
           </div>
-        </div>
+        </Link>
         {/* Explicit close so users who change their mind don't have to read
             'Describe instead' as 'cancel'. */}
         <button
@@ -852,7 +858,12 @@ function ReviewScreen({
         className="flex items-center"
         style={{ padding: "24px 32px" }}
       >
-        <div className="flex items-center gap-3">
+        <Link
+          href="/"
+          aria-label="Go home"
+          className="flex items-center gap-3"
+          style={{ textDecoration: "none" }}
+        >
           <div
             style={{
               width: 28, height: 28, borderRadius: 8, background: "#3B4953",
@@ -863,7 +874,7 @@ function ReviewScreen({
           <div style={{ ...dmSerif, fontSize: 22, color: "#3B4953", letterSpacing: -0.2 }}>
             magicus
           </div>
-        </div>
+        </Link>
       </header>
 
       <section className="flex-1 flex items-center justify-center" style={{ padding: "32px 24px 80px" }}>
@@ -1040,7 +1051,12 @@ function ProcessingScreen() {
       style={{ background: "#1C2420", color: "#EBF4DD", ...dmSans }}
     >
       <header className="flex items-center" style={{ padding: "24px 32px" }}>
-        <div className="flex items-center gap-3">
+        <Link
+          href="/"
+          aria-label="Go home"
+          className="flex items-center gap-3"
+          style={{ textDecoration: "none" }}
+        >
           <div
             style={{
               width: 28, height: 28, borderRadius: 8, background: "#EBF4DD",
@@ -1051,7 +1067,7 @@ function ProcessingScreen() {
           <div style={{ ...dmSerif, fontSize: 22, color: "#EBF4DD", letterSpacing: -0.2 }}>
             magicus
           </div>
-        </div>
+        </Link>
       </header>
 
       <section className="flex-1 flex flex-col items-center justify-center" style={{ padding: "32px 24px 80px" }}>
@@ -1099,7 +1115,12 @@ function ErrorScreen({
       }}
     >
       <header className="flex items-center" style={{ padding: "24px 32px" }}>
-        <div className="flex items-center gap-3">
+        <Link
+          href="/"
+          aria-label="Go home"
+          className="flex items-center gap-3"
+          style={{ textDecoration: "none" }}
+        >
           <div
             style={{
               width: 28, height: 28, borderRadius: 8, background: "#3B4953",
@@ -1110,7 +1131,7 @@ function ErrorScreen({
           <div style={{ ...dmSerif, fontSize: 22, color: "#3B4953", letterSpacing: -0.2 }}>
             magicus
           </div>
-        </div>
+        </Link>
       </header>
 
       <section className="flex-1 flex items-center justify-center" style={{ padding: "32px 24px 80px" }}>

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import Link from "next/link";
 import { Plus, Zap, LogOut } from "lucide-react";
 import { useAuth } from "@/lib/auth-context";
 
@@ -141,36 +142,43 @@ export function TopBar({
       }}
     >
       <div className="flex items-center gap-3 min-w-0">
-        <div
-          style={{
-            width: 28,
-            height: 28,
-            borderRadius: 8,
-            background: "#3B4953",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            color: "#EBF4DD",
-            fontFamily: "var(--font-dm-serif), serif",
-            fontStyle: "italic",
-            fontSize: 16,
-            flexShrink: 0,
-          }}
+        <Link
+          href="/"
+          aria-label="Go home"
+          className="flex items-center gap-3 min-w-0"
+          style={{ textDecoration: "none" }}
         >
-          m
-        </div>
-        <div
-          className="hidden sm:block"
-          style={{
-            fontFamily: "var(--font-dm-serif), serif",
-            fontStyle: "italic",
-            fontSize: 22,
-            color: "#3B4953",
-            letterSpacing: -0.2,
-          }}
-        >
-          magicus
-        </div>
+          <div
+            style={{
+              width: 28,
+              height: 28,
+              borderRadius: 8,
+              background: "#3B4953",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              color: "#EBF4DD",
+              fontFamily: "var(--font-dm-serif), serif",
+              fontStyle: "italic",
+              fontSize: 16,
+              flexShrink: 0,
+            }}
+          >
+            m
+          </div>
+          <div
+            className="hidden sm:block"
+            style={{
+              fontFamily: "var(--font-dm-serif), serif",
+              fontStyle: "italic",
+              fontSize: 22,
+              color: "#3B4953",
+              letterSpacing: -0.2,
+            }}
+          >
+            magicus
+          </div>
+        </Link>
         {/* New workflow sits with the logo cluster — it's the canvas-level
             create action and reads as 'left side' alongside the brand. */}
         <button

@@ -20,9 +20,9 @@ const dmSerif = { fontFamily: "var(--font-dm-serif), serif", fontStyle: "italic"
 const dmSans = { fontFamily: "var(--font-dm-sans), sans-serif" };
 
 const PLACEHOLDERS = [
-  "When a new lead comes in, I check HubSpot, score them, and send a personalised email…",
-  "Every Monday I pull last week's metrics and post a summary to Slack…",
-  "When a client signs, I set up their Notion workspace and send the welcome sequence…",
+  "Every Monday I check dashboards, flag issues, and brief the team — three hours I want back…",
+  "When a new client signs, I set up Notion, send the welcome email, and schedule the kickoff — all manually…",
+  "I review inbound leads every morning, score them, and decide who gets a call — still doing it by hand…",
 ];
 
 // ─── Speech recognition (re-declared locally to avoid coupling to landing.tsx)
@@ -157,7 +157,7 @@ function HeroSection({
             maxWidth: 720,
           }}
         >
-          Do it once. Skip it forever.
+          Get ahead of AI.
         </h1>
 
         <p
@@ -169,9 +169,9 @@ function HeroSection({
             marginBottom: 36,
           }}
         >
-          You already know how your business works. Record yourself doing it
-          once — Magicus maps it, scores it, and builds you an automation
-          blueprint. You bring the magic.
+          You know how things really work. Record it once — Magicus maps,
+          scores, and identifies exactly where you need AI agents. You bring
+          the magic.
         </p>
 
         <PromptBox onMap={onMap} onRecord={onRecord} />

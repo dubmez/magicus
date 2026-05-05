@@ -189,7 +189,7 @@ export function ButterflyCard({
             zIndex: 10,
           }}
         >
-          <div style={{ ...dmSerif, color: "#FFFFFF", fontSize: compact ? 12 : 16, lineHeight: 1.2 }}>
+          <div style={{ ...dmSerif, color: "#FFFFFF", fontSize: compact ? 12 : 19, lineHeight: 1.2 }}>
             {data.name}
           </div>
           {!compact && shared && (
@@ -247,9 +247,12 @@ export function ButterflyCard({
         </div>
 
         {/* BODY */}
+        {/* Width tuned so the steps column gets ~45% of the card and each
+            wing ~27.5%. Card is 560px (compact 280px), so 252/126 here lets
+            step text breathe without enlarging the overall footprint. */}
         <div
           style={{
-            width: compact ? 100 : 200,
+            width: compact ? 126 : 252,
             background: "#FFFFFF",
             padding: compact ? "10px 6px" : "18px 14px",
             position: "relative",
@@ -285,10 +288,10 @@ export function ButterflyCard({
                     style={{
                       background: "#547863",
                       color: "#FFFFFF",
-                      fontSize: compact ? 8 : 10,
+                      fontSize: compact ? 8 : 11,
                       fontWeight: 600,
-                      width: compact ? 14 : 18,
-                      height: compact ? 14 : 18,
+                      width: compact ? 14 : 22,
+                      height: compact ? 14 : 22,
                       borderRadius: 999,
                       display: "inline-flex",
                       alignItems: "center",
