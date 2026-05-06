@@ -15,9 +15,34 @@ const dmSerifDisplay = DM_Serif_Display({
   variable: "--font-dm-serif",
 });
 
+// Site-wide metadata baseline. Pages with their own `generateMetadata`
+// (like /w/[token]) override these on a per-page basis.
+const siteUrl = "https://magicus.io";
+const siteTitle = "Magicus — Get ahead of AI";
+const siteDescription =
+  "Record your workflow once. Magicus maps, scores, and identifies exactly where you need AI agents.";
+
 export const metadata: Metadata = {
-  title: "Magicus",
-  description: "Map, visualise, and automate your business workflows",
+  metadataBase: new URL(siteUrl),
+  title: {
+    default: siteTitle,
+    template: "%s — Magicus",
+  },
+  description: siteDescription,
+  openGraph: {
+    title: siteTitle,
+    description: siteDescription,
+    url: siteUrl,
+    siteName: "Magicus",
+    type: "website",
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: siteTitle,
+    description: siteDescription,
+  },
+  // OG image isn't generated yet — once we have one, drop it in
+  // `public/og.png` and add `images: ["/og.png"]` to both blocks above.
 };
 
 export default function RootLayout({
