@@ -11,6 +11,7 @@ import {
   AlertCircle,
   AlertTriangle,
   Link2,
+  Lock,
   Zap,
 } from "lucide-react";
 import { useAuth, useRequireAuth } from "@/lib/auth-context";
@@ -72,10 +73,13 @@ function getSpeechRecognition(): SpeechRecognitionCtor | null {
 }
 
 // ─── Top bar ───────────────────────────────────────────────────────────────
-// Sits on the dark hero, so the logo wears the coral variant and the
-// Sign in button is a ghost-on-dark — light text, no border, no fill.
-function HeroHeader() {
-  const { openGate } = useAuth();
+// Sits on the dark hero. Logo in coral, right-side CTA is a ghost-on-dark
+// pill — its label flips between "Sign in" and "Go to your canvas" based
+// on auth state so signed-in users who arrive at the landing (via the
+// `?welcome=1` escape hatch) have a way back to the workspace.
+function HeroHeader({ onGoToCanvas }: { onGoToCanvas?: () => void }) {
+  const { user, openGate } = useAuth();
+  const showCanvasCTA = !!user && !!onGoToCanvas;
   return (
     <header
       className="flex items-center justify-between"
@@ -95,20 +99,20 @@ function HeroHeader() {
         </span>
       </div>
       <button
-        onClick={() => openGate()}
-        className="hover:opacity-80 transition-opacity"
+        onClick={() => (showCanvasCTA ? onGoToCanvas!() : openGate())}
+        className="hover:bg-white/5 transition-colors"
         style={{
           background: "transparent",
           color: HERO_INK,
-          padding: "6px 14px",
+          padding: "10px 18px",
           borderRadius: 999,
           fontSize: 14,
           fontWeight: 500,
-          border: "none",
+          border: "1px solid rgba(245, 240, 232, 0.25)",
           cursor: "pointer",
         }}
       >
-        Sign in
+        {showCanvasCTA ? "Go to your canvas →" : "Sign in"}
       </button>
     </header>
   );
@@ -277,6 +281,9 @@ function PromptBox({
   const baseTextRef = useRef("");
   const denyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const guard = useRequireAuth();
+  // Used to drive the padlock on Voice / Record so the auth gate isn't
+  // a surprise when an unauthed user clicks.
+  const { user } = useAuth();
 
   // Detect voice support once on mount.
   useEffect(() => {
@@ -536,7 +543,9 @@ function PromptBox({
         style={{
           marginTop: 14,
           paddingTop: 12,
-          borderTop: "1px solid #EBF4DD",
+          // Neutral grey divider — the previous sage tone read oddly on
+          // a white card sitting on the dark hero.
+          borderTop: "1px solid #ECECEC",
         }}
       >
         <div className="flex items-center gap-2">
@@ -553,6 +562,8 @@ function PromptBox({
               icon={<Mic size={12} />}
               active={mode === "voice"}
               onClick={() => switchMode("voice")}
+              locked={!user}
+              lockedTitle="Sign in to use voice input"
             />
           )}
           <ModePill
@@ -560,6 +571,8 @@ function PromptBox({
             icon={<Video size={12} />}
             active={false}
             onClick={() => switchMode("record")}
+            locked={!user}
+            lockedTitle="Sign in to record your screen"
           />
         </div>
 
@@ -603,6 +616,8 @@ function ModePill({
   active,
   onClick,
   activeIconColor,
+  locked,
+  lockedTitle,
 }: {
   label: string;
   icon: React.ReactNode;
@@ -611,10 +626,15 @@ function ModePill({
   // When set, the icon is wrapped in a coloured span only while active.
   // Lets the Describe pill show a coral sparkle on the dark active state.
   activeIconColor?: string;
+  // Auth-gated mode for unauthed users: shows a small padlock so the
+  // sign-in modal isn't a surprise on click.
+  locked?: boolean;
+  lockedTitle?: string;
 }) {
   return (
     <button
       onClick={onClick}
+      title={locked ? lockedTitle : undefined}
       className="flex items-center gap-1.5 transition-colors"
       style={{
         background: active ? HERO_BG : "transparent",
@@ -633,6 +653,13 @@ function ModePill({
         icon
       )}
       {label}
+      {locked && (
+        <Lock
+          size={10}
+          style={{ color: "#90A6AC", marginLeft: 2 }}
+          aria-label="Sign in required"
+        />
+      )}
     </button>
   );
 }
@@ -690,7 +717,8 @@ function ButterflySection() {
       style={{
         background: "#EBF4DD",
         padding: "80px 32px 96px",
-        borderTop: "1px solid #DCE7CB",
+        // No borderTop — the gradient transition above resolves into
+        // this section's background; an extra rule reads as a seam.
       }}
     >
       <div className="max-w-[1100px] mx-auto flex flex-col items-center text-center">
@@ -813,41 +841,17 @@ function Pillar({
   );
 }
 
-function SocialProof() {
-  return (
-    <section
-      style={{
-        padding: "32px 32px 64px",
-        background: "#F7FAF2",
-        backgroundImage:
-          "radial-gradient(rgba(144, 171, 139, 0.4) 1.2px, transparent 1.2px)",
-        backgroundSize: "28px 28px",
-        textAlign: "center",
-      }}
-    >
-      <div
-        style={{
-          ...dmSans,
-          fontSize: 14,
-          color: "#90AB8B",
-          letterSpacing: 0.2,
-        }}
-      >
-        Join thousands of AI-pilled leaders automating their workflows
-      </div>
-    </section>
-  );
-}
-
-// 120px gradient that bridges the dark hero to the sage section below
+// 180px gradient that bridges the dark hero to the sage section below
 // it. Sits in normal flow so it pushes content rather than overlapping;
-// the bottom colour matches ButterflySection's background.
+// the bottom colour matches ButterflySection's background. We took the
+// border-top off ButterflySection to avoid a visible seam where the
+// gradient resolves.
 function HeroToSageTransition() {
   return (
     <div
       aria-hidden
       style={{
-        height: 120,
+        height: 180,
         background: `linear-gradient(to bottom, ${HERO_BG} 0%, #EBF4DD 100%)`,
       }}
     />
@@ -859,15 +863,19 @@ export function LandingHero({
   onMap,
   onBrowseExamples,
   onRecord,
+  onGoToCanvas,
 }: {
   onMap: (description: string) => Promise<void>;
   onBrowseExamples: () => void;
   onRecord: () => void;
+  // Optional: when set, the header CTA flips to "Go to your canvas →"
+  // for signed-in users who reached the landing via the escape hatch.
+  onGoToCanvas?: () => void;
 }) {
   return (
     <div className="min-h-screen w-full flex flex-col" style={{ ...dmSans }}>
       <div className="flex flex-col" style={{ minHeight: "100vh", background: HERO_BG }}>
-        <HeroHeader />
+        <HeroHeader onGoToCanvas={onGoToCanvas} />
         <HeroSection
           onMap={onMap}
           onBrowseExamples={onBrowseExamples}
@@ -877,7 +885,10 @@ export function LandingHero({
       <HeroToSageTransition />
       <ButterflySection />
       <PillarsSection />
-      <SocialProof />
+      {/* Social proof strip removed — "Join thousands of AI-pilled
+          leaders…" was unsubstantiated and the in-group slang risked
+          alienating more conservative visitors. Will return when we
+          have real testimonials with names. */}
     </div>
   );
 }

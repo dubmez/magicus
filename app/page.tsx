@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { Canvas } from "./components/canvas";
 import { TopBar } from "./components/top-bar";
 import { Sidebar } from "./components/sidebar";
@@ -48,6 +49,18 @@ export default function Home() {
   } = useWorkflows();
   const { user, hydrated } = useAuth();
   const guard = useRequireAuth();
+  const router = useRouter();
+  const searchParams = useSearchParams();
+
+  // ── URL-driven mode ────────────────────────────────────────────────────
+  // ?welcome=1 forces the landing hero to render even for signed-in
+  // users — useful for marketing links and for testing the hero on
+  // mobile without an incognito window.
+  const welcomeParam = searchParams?.get("welcome") === "1";
+  // ?examples=1 takes the user straight to the Examples canvas. Set
+  // when "browse example workflows" is clicked so the browser back
+  // button returns to the landing rather than getting stuck.
+  const examplesParam = searchParams?.get("examples") === "1";
 
   const [started, setStarted] = useState(false);
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -67,6 +80,23 @@ export default function Home() {
   useEffect(() => {
     if (hydrated && !user) setStarted(false);
   }, [hydrated, user]);
+
+  // Sync `started` with the URL. ?welcome=1 always wins (force hero);
+  // ?examples=1 forces the Examples canvas. When the user backs out
+  // of `?examples=1` to a clean URL, this effect resets started so an
+  // unauthed visitor sees the hero again.
+  useEffect(() => {
+    if (welcomeParam) {
+      setStarted(false);
+      return;
+    }
+    if (examplesParam) {
+      setActiveCanvasId(EXAMPLES_CANVAS_ID);
+      setStarted(true);
+      return;
+    }
+    if (!user) setStarted(false);
+  }, [welcomeParam, examplesParam, user, setActiveCanvasId]);
 
   // Auto-dismiss the success toast after 3s.
   useEffect(() => {
@@ -433,7 +463,12 @@ export default function Home() {
     );
   }
 
-  if (!user && !started) {
+  // Show the landing when:
+  //   - the user is unauthed and hasn't started yet, OR
+  //   - ?welcome=1 is in the URL (escape hatch for signed-in users
+  //     who want to see / share / test the marketing surface).
+  const showLanding = welcomeParam || (!user && !started);
+  if (showLanding) {
     return (
       <LandingHero
         // The hero submits straight into handleMap. handleMap awaits the API
@@ -441,10 +476,15 @@ export default function Home() {
         // generated workflow already selected.
         onMap={handleMap}
         onBrowseExamples={() => {
-          setActiveCanvasId(EXAMPLES_CANVAS_ID);
-          setStarted(true);
+          // Push a URL change so the browser back button returns to the
+          // landing instead of being stuck on the canvas. The synced
+          // useEffect above flips `started` and the active canvas.
+          router.push("/?examples=1");
         }}
         onRecord={() => setRecordingOpen(true)}
+        // Signed-in user viewing the landing via ?welcome=1 — give them a
+        // direct path back to their workspace.
+        onGoToCanvas={user ? () => router.push("/") : undefined}
       />
     );
   }
