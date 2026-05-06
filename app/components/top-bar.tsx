@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { Plus, Zap, LogOut } from "lucide-react";
 import { useAuth } from "@/lib/auth-context";
+import { LogoMark } from "./logo";
 
 function UserMenu() {
   const { user, signOut, openGate } = useAuth();
@@ -145,27 +146,10 @@ export function TopBar({
         <Link
           href="/"
           aria-label="Go home"
-          className="flex items-center gap-3 min-w-0"
+          className="flex items-center gap-2.5 min-w-0"
           style={{ textDecoration: "none" }}
         >
-          <div
-            style={{
-              width: 28,
-              height: 28,
-              borderRadius: 8,
-              background: "#3B4953",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              color: "#EBF4DD",
-              fontFamily: "var(--font-dm-serif), serif",
-              fontStyle: "italic",
-              fontSize: 16,
-              flexShrink: 0,
-            }}
-          >
-            m
-          </div>
+          <LogoMark variant="sage" size={28} />
           <div
             className="hidden sm:block"
             style={{

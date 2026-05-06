@@ -15,11 +15,23 @@ import {
 } from "lucide-react";
 import { useAuth, useRequireAuth } from "@/lib/auth-context";
 import { AnimatedButterfly } from "./animated-butterfly";
+import { LogoMark } from "./logo";
 
-const dmSerif = {
+// ─── Palette ──────────────────────────────────────────────────────────────
+// Kept inline rather than in a tokens file because the colours here are
+// load-bearing for the hero design and reading them in context is easier
+// than chasing them through a theme.
+const HERO_BG = "#2B3D42"; // deep slate-teal — hero canvas
+const HERO_INK = "#F5F0E8"; // cream — primary type on dark
+const HERO_INK_DIM = "#A8BDB8"; // muted teal — body type on dark
+const EYEBROW = "#90AB8B"; // sage — eyebrow + secondary muted
+const CORAL = "#E8553E"; // accent — italic "you", Map it, browse CTA
+
+const dmSerifItalic = {
   fontFamily: "var(--font-dm-serif), serif",
   fontStyle: "italic" as const,
 };
+const dmSerif = { fontFamily: "var(--font-dm-serif), serif" };
 const dmSans = { fontFamily: "var(--font-dm-sans), sans-serif" };
 
 const PLACEHOLDERS = [
@@ -60,6 +72,8 @@ function getSpeechRecognition(): SpeechRecognitionCtor | null {
 }
 
 // ─── Top bar ───────────────────────────────────────────────────────────────
+// Sits on the dark hero, so the logo wears the coral variant and the
+// Sign in button is a ghost-on-dark — light text, no border, no fill.
 function HeroHeader() {
   const { openGate } = useAuth();
   return (
@@ -67,45 +81,31 @@ function HeroHeader() {
       className="flex items-center justify-between"
       style={{ padding: "24px 32px", position: "relative", zIndex: 2 }}
     >
-      <div className="flex items-center gap-3">
-        <div
+      <div className="flex items-center gap-2.5">
+        <LogoMark variant="coral" size={32} />
+        <span
           style={{
-            width: 28,
-            height: 28,
-            borderRadius: 8,
-            background: "#3B4953",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            color: "#EBF4DD",
-            ...dmSerif,
-            fontSize: 16,
-          }}
-        >
-          m
-        </div>
-        <div
-          style={{
-            ...dmSerif,
-            fontSize: 22,
-            color: "#3B4953",
+            ...dmSerifItalic,
+            fontSize: 24,
+            color: HERO_INK,
             letterSpacing: -0.2,
           }}
         >
           magicus
-        </div>
+        </span>
       </div>
       <button
         onClick={() => openGate()}
-        className="hover:bg-[#EBF4DD] transition-colors"
+        className="hover:opacity-80 transition-opacity"
         style={{
           background: "transparent",
-          color: "#3B4953",
+          color: HERO_INK,
           padding: "6px 14px",
           borderRadius: 999,
-          fontSize: 13,
+          fontSize: 14,
           fontWeight: 500,
-          border: "1px solid transparent",
+          border: "none",
+          cursor: "pointer",
         }}
       >
         Sign in
@@ -114,7 +114,37 @@ function HeroHeader() {
   );
 }
 
+// Atmospheric butterfly silhouette behind the headline. Very low opacity
+// so it reads as texture, not as a literal mark — the eye picks up the
+// shape only when it's not focused on the type.
+function HeroBackgroundButterfly() {
+  return (
+    <div
+      aria-hidden
+      style={{
+        position: "absolute",
+        top: "50%",
+        right: "-4%",
+        transform: "translateY(-50%)",
+        width: "min(720px, 70vw)",
+        height: "min(720px, 70vw)",
+        opacity: 0.08,
+        pointerEvents: "none",
+        zIndex: 0,
+      }}
+    >
+      <svg viewBox="0 0 32 32" width="100%" height="100%">
+        <path d="M14 4 a12 12 0 0 0 0 24 z" fill="#FFFFFF" />
+        <path d="M18 4 a12 12 0 0 1 0 24 z" fill="#FFFFFF" />
+      </svg>
+    </div>
+  );
+}
+
 // ─── Hero (eyebrow + headline + subhead + prompt + browse) ────────────────
+// Dark slate canvas with a faint dot grid for texture and a low-opacity
+// butterfly silhouette behind the headline. Content sits in the middle on
+// a stacking context above the silhouette.
 function HeroSection({
   onMap,
   onBrowseExamples,
@@ -128,63 +158,71 @@ function HeroSection({
     <section
       className="relative flex-1 flex items-center justify-center"
       style={{
-        padding: "48px 24px 80px",
-        // Layered: dot grid texture on top, sage glow in middle, cream base.
-        // The dots persist across the gradient so the whole hero reads as one
-        // soft, considered surface — not a separate panel.
+        padding: "32px 24px 96px",
         background: `
-          radial-gradient(rgba(144, 171, 139, 0.4) 1.2px, transparent 1.2px),
-          radial-gradient(ellipse 110% 80% at center 38%, rgba(44, 74, 62, 0.22) 0%, rgba(44, 74, 62, 0.08) 35%, rgba(247, 250, 242, 0) 65%),
-          #F7FAF2
+          radial-gradient(rgba(255, 255, 255, 0.06) 1px, transparent 1px),
+          ${HERO_BG}
         `,
-        backgroundSize: "28px 28px, auto, auto",
-        backgroundPosition: "0 0, center, 0 0",
-        backgroundRepeat: "repeat, no-repeat, no-repeat",
+        backgroundSize: "28px 28px, auto",
+        overflow: "hidden",
       }}
     >
+      <HeroBackgroundButterfly />
+
       <div
-        className="w-full max-w-[760px] mx-auto flex flex-col items-center text-center"
+        className="w-full max-w-[860px] mx-auto flex flex-col items-center text-center"
         style={{ position: "relative", zIndex: 1 }}
       >
         <div
           style={{
-            color: "#547863",
+            color: EYEBROW,
             fontSize: 12,
             letterSpacing: "0.1em",
             textTransform: "uppercase",
             fontWeight: 500,
-            marginBottom: 20,
+            marginBottom: 28,
           }}
         >
           Workflow intelligence for the AI era
         </div>
 
         <h1
-          className="text-[40px] md:text-[56px] lg:text-[64px]"
+          className="text-[44px] md:text-[64px] lg:text-[72px]"
           style={{
             ...dmSerif,
-            color: "#3B4953",
+            fontWeight: 400,
+            color: HERO_INK,
             lineHeight: 1.05,
             letterSpacing: -1,
-            marginBottom: 20,
-            maxWidth: 720,
+            marginBottom: 24,
+            maxWidth: 880,
           }}
         >
-          Own your workflow. Get ahead of AI
+          The way{" "}
+          <em
+            style={{
+              fontStyle: "italic",
+              color: CORAL,
+              fontFamily: "var(--font-dm-serif), serif",
+            }}
+          >
+            you
+          </em>{" "}
+          actually work.
         </h1>
 
         <p
           className="text-[16px] md:text-[18px]"
           style={{
-            color: "#547863",
+            color: HERO_INK_DIM,
             lineHeight: 1.55,
-            maxWidth: 520,
-            marginBottom: 36,
+            maxWidth: 560,
+            marginBottom: 40,
           }}
         >
-          You know how things really work. Record it once - Magicus maps,
-          scores, and identifies exactly where you need AI agents. You bring the
-          magic.
+          Talk through any process in plain language. Magicus maps it, scores
+          what&apos;s automatable, and tells you exactly where AI agents
+          should plug in.
         </p>
 
         <PromptBox onMap={onMap} onRecord={onRecord} />
@@ -194,11 +232,12 @@ function HeroSection({
           className="hover:underline flex items-center gap-1 mt-6"
           style={{
             background: "transparent",
-            color: "#90AB8B",
+            color: CORAL,
             fontSize: 13,
-            fontWeight: 400,
+            fontWeight: 500,
             border: "none",
             padding: "8px 12px",
+            cursor: "pointer",
           }}
         >
           Or browse example workflows
@@ -374,12 +413,12 @@ function PromptBox({
     <div
       className="w-full"
       style={{
-        maxWidth: 680,
+        maxWidth: 760,
         background: "#FFFFFF",
-        border: "1px solid #EBF4DD",
-        borderRadius: 20,
+        // No border on dark — the shadow does all the lifting.
+        borderRadius: 16,
         padding: "20px 24px",
-        boxShadow: "0 8px 40px rgba(59, 73, 83, 0.12)",
+        boxShadow: "0 8px 48px rgba(0, 0, 0, 0.3)",
         ...dmSans,
       }}
     >
@@ -498,6 +537,7 @@ function PromptBox({
             icon={<Sparkles size={12} />}
             active={mode === "describe"}
             onClick={() => switchMode("describe")}
+            activeIconColor={CORAL}
           />
           {voiceSupported && (
             <ModePill
@@ -520,11 +560,11 @@ function PromptBox({
           disabled={submitDisabled}
           className="flex items-center gap-2 transition-opacity"
           style={{
-            background: "#3B4953",
-            color: "#EBF4DD",
-            padding: "10px 18px",
+            background: CORAL,
+            color: "#FFFFFF",
+            padding: "10px 20px",
             borderRadius: 999,
-            fontSize: 13,
+            fontSize: 14,
             fontWeight: 500,
             border: "none",
             opacity: submitDisabled ? 0.4 : 1,
@@ -553,28 +593,36 @@ function ModePill({
   icon,
   active,
   onClick,
+  activeIconColor,
 }: {
   label: string;
   icon: React.ReactNode;
   active: boolean;
   onClick: () => void;
+  // When set, the icon is wrapped in a coloured span only while active.
+  // Lets the Describe pill show a coral sparkle on the dark active state.
+  activeIconColor?: string;
 }) {
   return (
     <button
       onClick={onClick}
       className="flex items-center gap-1.5 transition-colors"
       style={{
-        background: active ? "#3B4953" : "transparent",
-        color: active ? "#EBF4DD" : "#547863",
-        border: `1px solid ${active ? "#3B4953" : "#EBF4DD"}`,
-        padding: "5px 11px",
+        background: active ? HERO_BG : "transparent",
+        color: active ? "#FFFFFF" : "#6B8A8F",
+        border: `1px solid ${active ? HERO_BG : "#DCE3E5"}`,
+        padding: "6px 12px",
         borderRadius: 999,
         fontSize: 12,
         fontWeight: 500,
         cursor: "pointer",
       }}
     >
-      {icon}
+      {active && activeIconColor ? (
+        <span style={{ color: activeIconColor, display: "inline-flex" }}>{icon}</span>
+      ) : (
+        icon
+      )}
       {label}
     </button>
   );
@@ -640,7 +688,7 @@ function ButterflySection() {
         <h2
           className="text-[28px] md:text-[34px]"
           style={{
-            ...dmSerif,
+            ...dmSerifItalic,
             color: "#3B4953",
             marginBottom: 48,
             letterSpacing: -0.4,
@@ -733,7 +781,7 @@ function Pillar({
       </div>
       <div
         style={{
-          ...dmSerif,
+          ...dmSerifItalic,
           fontSize: 22,
           color: "#3B4953",
           marginBottom: 8,
@@ -782,6 +830,21 @@ function SocialProof() {
   );
 }
 
+// 120px gradient that bridges the dark hero to the sage section below
+// it. Sits in normal flow so it pushes content rather than overlapping;
+// the bottom colour matches ButterflySection's background.
+function HeroToSageTransition() {
+  return (
+    <div
+      aria-hidden
+      style={{
+        height: 120,
+        background: `linear-gradient(to bottom, ${HERO_BG} 0%, #EBF4DD 100%)`,
+      }}
+    />
+  );
+}
+
 // ─── Public component ─────────────────────────────────────────────────────
 export function LandingHero({
   onMap,
@@ -794,7 +857,7 @@ export function LandingHero({
 }) {
   return (
     <div className="min-h-screen w-full flex flex-col" style={{ ...dmSans }}>
-      <div className="flex flex-col" style={{ minHeight: "100vh" }}>
+      <div className="flex flex-col" style={{ minHeight: "100vh", background: HERO_BG }}>
         <HeroHeader />
         <HeroSection
           onMap={onMap}
@@ -802,6 +865,7 @@ export function LandingHero({
           onRecord={onRecord}
         />
       </div>
+      <HeroToSageTransition />
       <ButterflySection />
       <PillarsSection />
       <SocialProof />

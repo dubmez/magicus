@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { Sparkles, Send, Loader2, X, ArrowRight, Mic, AlertCircle, AlertTriangle } from "lucide-react";
 import { useRequireAuth } from "@/lib/auth-context";
+import { LogoMark } from "./logo";
 
 const dmSerif = {
   fontFamily: "var(--font-dm-serif), serif",
@@ -437,25 +438,10 @@ export function Landing({
         <Link
           href="/"
           aria-label="Go home"
-          className="absolute flex items-center gap-3"
+          className="absolute flex items-center gap-2.5"
           style={{ top: 28, left: 32, textDecoration: "none" }}
         >
-          <div
-            style={{
-              width: 28,
-              height: 28,
-              borderRadius: 8,
-              background: "#3B4953",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              color: "#EBF4DD",
-              ...dmSerif,
-              fontSize: 16,
-            }}
-          >
-            m
-          </div>
+          <LogoMark variant="sage" size={28} />
           <div style={{ ...dmSerif, fontSize: 22, color: "#3B4953" }}>
             magicus
           </div>

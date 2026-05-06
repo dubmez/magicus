@@ -12,6 +12,7 @@ import {
   X,
 } from "lucide-react";
 import { AnimatedButterfly } from "./animated-butterfly";
+import { LogoMark } from "./logo";
 
 const dmSerif = { fontFamily: "var(--font-dm-serif), serif", fontStyle: "italic" as const };
 const dmSans = { fontFamily: "var(--font-dm-sans), sans-serif" };
@@ -438,25 +439,10 @@ function PrepScreen({
         <Link
           href="/"
           aria-label="Go home"
-          className="flex items-center gap-3"
+          className="flex items-center gap-2.5"
           style={{ textDecoration: "none" }}
         >
-          <div
-            style={{
-              width: 28,
-              height: 28,
-              borderRadius: 8,
-              background: "#3B4953",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              color: "#EBF4DD",
-              ...dmSerif,
-              fontSize: 16,
-            }}
-          >
-            m
-          </div>
+          <LogoMark variant="sage" size={28} />
           <div style={{ ...dmSerif, fontSize: 22, color: "#3B4953", letterSpacing: -0.2 }}>
             magicus
           </div>
@@ -861,16 +847,10 @@ function ReviewScreen({
         <Link
           href="/"
           aria-label="Go home"
-          className="flex items-center gap-3"
+          className="flex items-center gap-2.5"
           style={{ textDecoration: "none" }}
         >
-          <div
-            style={{
-              width: 28, height: 28, borderRadius: 8, background: "#3B4953",
-              display: "flex", alignItems: "center", justifyContent: "center",
-              color: "#EBF4DD", ...dmSerif, fontSize: 16,
-            }}
-          >m</div>
+          <LogoMark variant="sage" size={28} />
           <div style={{ ...dmSerif, fontSize: 22, color: "#3B4953", letterSpacing: -0.2 }}>
             magicus
           </div>
@@ -1054,16 +1034,12 @@ function ProcessingScreen() {
         <Link
           href="/"
           aria-label="Go home"
-          className="flex items-center gap-3"
+          className="flex items-center gap-2.5"
           style={{ textDecoration: "none" }}
         >
-          <div
-            style={{
-              width: 28, height: 28, borderRadius: 8, background: "#EBF4DD",
-              display: "flex", alignItems: "center", justifyContent: "center",
-              color: "#1C2420", ...dmSerif, fontSize: 16,
-            }}
-          >m</div>
+          {/* Cream variant on the dark recording chrome — pulls the mark
+              from the same icon path with an explicit color override. */}
+          <LogoMark variant="sage" size={28} color="#EBF4DD" />
           <div style={{ ...dmSerif, fontSize: 22, color: "#EBF4DD", letterSpacing: -0.2 }}>
             magicus
           </div>
@@ -1118,16 +1094,10 @@ function ErrorScreen({
         <Link
           href="/"
           aria-label="Go home"
-          className="flex items-center gap-3"
+          className="flex items-center gap-2.5"
           style={{ textDecoration: "none" }}
         >
-          <div
-            style={{
-              width: 28, height: 28, borderRadius: 8, background: "#3B4953",
-              display: "flex", alignItems: "center", justifyContent: "center",
-              color: "#EBF4DD", ...dmSerif, fontSize: 16,
-            }}
-          >m</div>
+          <LogoMark variant="sage" size={28} />
           <div style={{ ...dmSerif, fontSize: 22, color: "#3B4953", letterSpacing: -0.2 }}>
             magicus
           </div>

@@ -22,6 +22,7 @@ import {
   calculateAutomationScore,
 } from "@/lib/workflows";
 import { ButterflyCard } from "@/app/components/butterfly-card";
+import { LogoMark } from "@/app/components/logo";
 import { type ShareSettings } from "@/lib/shares";
 import { storage } from "@/lib/db";
 import { useAuth } from "@/lib/auth-context";
@@ -44,23 +45,8 @@ export function PublicHeader() {
         zIndex: 20,
       }}
     >
-      <Link href="/" className="flex items-center gap-3" style={{ textDecoration: "none" }}>
-        <div
-          style={{
-            width: 28,
-            height: 28,
-            borderRadius: 8,
-            background: "#3B4953",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            color: "#EBF4DD",
-            ...dmSerif,
-            fontSize: 16,
-          }}
-        >
-          m
-        </div>
+      <Link href="/" className="flex items-center gap-2.5" style={{ textDecoration: "none" }}>
+        <LogoMark variant="sage" size={28} />
         <span style={{ ...dmSerif, fontSize: 22, color: "#3B4953", letterSpacing: -0.2 }}>
           magicus
         </span>
