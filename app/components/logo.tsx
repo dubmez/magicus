@@ -1,33 +1,41 @@
-// Magicus logo — two opposing half-discs with a thin gap between them, the
-// abstract butterfly mark we use across the app and the favicon.
+// Magicus logo — two opposing wings (half-discs) with a thin vertical body
+// between them. Abstract butterfly mark used across the app and favicon.
 //
 // Two visual variants:
 //   coral — used on the dark landing hero and the favicon
 //   sage  — used everywhere else (top bar, share view, recording flow)
 //
-// Wordmark colour can override the default per call (e.g. cream on the
-// dark recording screen) without changing the icon variant.
+// Wing and body colours can be overridden per call (e.g. cream wings on
+// the dark recording chrome) without changing the variant.
 
 const dmSerif = { fontFamily: "var(--font-dm-serif), serif", fontStyle: "italic" as const };
 
 export type LogoVariant = "coral" | "sage";
 
-const MARK_COLORS: Record<LogoVariant, string> = {
-  coral: "#E8553E",
-  sage: "#547863",
+// Wings carry the brand colour; the body is a contrast accent that
+// reads as the butterfly's thorax/spine. Defaults are tuned for the
+// background each variant typically lands on.
+const MARK_PALETTE: Record<LogoVariant, { wing: string; body: string }> = {
+  coral: { wing: "#E8553E", body: "#F5F0E8" }, // cream body — for dark BGs
+  sage: { wing: "#547863", body: "#3B4953" }, // slate body — for light BGs
 };
 
 export function LogoMark({
   variant = "sage",
   size = 28,
   color,
+  bodyColor,
 }: {
   variant?: LogoVariant;
   size?: number;
-  // Direct override; takes precedence over `variant`.
+  // Direct overrides for atypical backgrounds (e.g. cream-on-dark
+  // recording screen). Take precedence over `variant` defaults.
   color?: string;
+  bodyColor?: string;
 }) {
-  const fill = color ?? MARK_COLORS[variant];
+  const palette = MARK_PALETTE[variant];
+  const wing = color ?? palette.wing;
+  const body = bodyColor ?? palette.body;
   return (
     <svg
       width={size}
@@ -38,10 +46,12 @@ export function LogoMark({
       aria-label="Magicus"
       style={{ flexShrink: 0 }}
     >
-      {/* Left half — D-shape with the curve on the left */}
-      <path d="M14 4 a12 12 0 0 0 0 24 z" fill={fill} />
-      {/* Right half — mirrored */}
-      <path d="M18 4 a12 12 0 0 1 0 24 z" fill={fill} />
+      {/* Left wing — D-shape with the curve on the left */}
+      <path d="M14 4 a12 12 0 0 0 0 24 z" fill={wing} />
+      {/* Right wing — mirrored */}
+      <path d="M18 4 a12 12 0 0 1 0 24 z" fill={wing} />
+      {/* Body — thin rounded capsule between the wings */}
+      <rect x="15" y="3" width="2" height="26" rx="1" fill={body} />
     </svg>
   );
 }
@@ -63,8 +73,6 @@ export function Logo({
   className?: string;
   style?: React.CSSProperties;
 }) {
-  // Default wordmark colour follows the variant: cream on coral (dark
-  // backgrounds), slate on sage (light backgrounds).
   const wmColor =
     wordmarkColor ?? (variant === "coral" ? "#F5F0E8" : "#3B4953");
   const wordSize = Math.round(size * 0.78);

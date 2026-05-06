@@ -116,7 +116,9 @@ function HeroHeader() {
 
 // Atmospheric butterfly silhouette behind the headline. Very low opacity
 // so it reads as texture, not as a literal mark — the eye picks up the
-// shape only when it's not focused on the type.
+// shape only when it's not focused on the type. Both halves visible
+// (centred more than offscreen-right) so the butterfly silhouette is
+// recognisable rather than a single half-disc on the edge.
 function HeroBackgroundButterfly() {
   return (
     <div
@@ -124,11 +126,11 @@ function HeroBackgroundButterfly() {
       style={{
         position: "absolute",
         top: "50%",
-        right: "-4%",
+        right: "8%",
         transform: "translateY(-50%)",
-        width: "min(720px, 70vw)",
-        height: "min(720px, 70vw)",
-        opacity: 0.08,
+        width: "min(640px, 60vw)",
+        height: "min(640px, 60vw)",
+        opacity: 0.06,
         pointerEvents: "none",
         zIndex: 0,
       }}
@@ -136,6 +138,7 @@ function HeroBackgroundButterfly() {
       <svg viewBox="0 0 32 32" width="100%" height="100%">
         <path d="M14 4 a12 12 0 0 0 0 24 z" fill="#FFFFFF" />
         <path d="M18 4 a12 12 0 0 1 0 24 z" fill="#FFFFFF" />
+        <rect x="15" y="3" width="2" height="26" rx="1" fill="#FFFFFF" />
       </svg>
     </div>
   );
@@ -419,6 +422,11 @@ function PromptBox({
         borderRadius: 16,
         padding: "20px 24px",
         boxShadow: "0 8px 48px rgba(0, 0, 0, 0.3)",
+        // Reset text-align: the parent hero is `text-center`, which the
+        // textarea ignores but the absolutely-positioned placeholder
+        // overlay otherwise inherits — making short placeholders look
+        // centred and long ones (which wrap) look indented.
+        textAlign: "left",
         ...dmSans,
       }}
     >
@@ -558,16 +566,17 @@ function PromptBox({
         <button
           onClick={submit}
           disabled={submitDisabled}
-          className="flex items-center gap-2 transition-opacity"
+          className="flex items-center gap-2 transition-colors"
           style={{
-            background: CORAL,
+            // Disabled state: lighter coral that still looks intentional
+            // (the 0.4 opacity it used to be made it read as broken).
+            background: submitDisabled ? "#F4A294" : CORAL,
             color: "#FFFFFF",
             padding: "10px 20px",
             borderRadius: 999,
             fontSize: 14,
             fontWeight: 500,
             border: "none",
-            opacity: submitDisabled ? 0.4 : 1,
             cursor: submitDisabled ? "not-allowed" : "pointer",
           }}
         >

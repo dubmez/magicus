@@ -13,19 +13,27 @@ Magicus is a workflow-mapping tool for non-technical users who want to describe,
 - Chains = connected subgraphs of workflows (computed via BFS in `computeChains`).
 
 **Key flows:**
-1. Landing (fullscreen) → describe workflow → POST /api/generate → LLM returns structured JSON via tool_call → workflows placed on "My Business" canvas → detail panel opens on first card
-2. In-app "New workflow" button → same Landing in modal mode
-3. Canvas: pan/zoom (mouse), click to select, shift-click multi-select, "Chain →" enters connect mode (crosshair cursor + banner), click target card to create connection
-4. Detail panel: editable inline fields for all workflow properties; trigger picker (schedule/event/manual or auto-set to "chained" when connected)
-5. Export: Markdown modal with copy button (no download)
-6. Automate: per-platform (Zapier/n8n) accordion, LLM generates step-by-step instructions, read/markdown toggle
+1. LandingHero (fullscreen) → describe workflow → POST /api/generate → LLM returns structured JSON → workflows placed on canvas → detail panel opens on first card
+2. Voice pill → auth gate for unauthed → SpeechRecognition API
+3. Record pill → auth gate → full-screen RecordingFlow component
+4. "browse example workflows" → state flip to EXAMPLES_CANVAS_ID (no navigation, no URL change)
+5. In-app "New workflow" → Landing component in modal mode
+6. Export: Markdown modal. Automate: per-platform LLM-generated guide.
 
-**Persistence:** localStorage only. No auth, no server-side user data.
+**Persistence:** localStorage + Supabase auth (Google OAuth). Auth state determines landing vs canvas view.
+
+**Routing:** Single-page at `/`. `!user && !started` → LandingHero; otherwise → Canvas workspace. Authenticated users navigating to `/` skip the landing entirely.
 
 **State management:** All in `page.tsx` via useState/useCallback; `useWorkflows` hook manages localStorage sync.
 
-**LLM integration:** `claude-sonnet-4-6`, system prompt cached with ephemeral cache_control. Generate endpoint uses tool_call forcing. Automate endpoint is free-form text response.
+**LLM integration:** `claude-sonnet-4-6`. Generate endpoint uses tool_call forcing. Automate endpoint is free-form text.
 
-**Examples canvas:** Hard-coded, read-only, always present. Pre-populated with 8 workflows across 4 themes (sales pipeline, newsletter, content pipeline, vendor onboarding, invoice approval).
+**Examples canvas:** EXAMPLES_CANVAS_ID constant, read-only, always present.
 
-**Why:** Why field on canvas — "My Business" canvas is the default editable canvas. User lands on it after first workflow generation.
+**Design tokens (hero-specific):**
+- HERO_BG: `#2B3D42` (slate-teal)
+- HERO_INK: `#F5F0E8` (cream)
+- HERO_INK_DIM: `#A8BDB8` (muted teal)
+- EYEBROW: `#90AB8B` (sage)
+- CORAL: `#E8553E` (accent — italic "you", Map it, browse CTA, logo mark on dark)
+- Logo: two opposing half-disc SVG paths (butterfly mark). Coral variant on dark hero, sage elsewhere.

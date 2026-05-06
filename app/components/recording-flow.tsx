@@ -1038,8 +1038,9 @@ function ProcessingScreen() {
           style={{ textDecoration: "none" }}
         >
           {/* Cream variant on the dark recording chrome — pulls the mark
-              from the same icon path with an explicit color override. */}
-          <LogoMark variant="sage" size={28} color="#EBF4DD" />
+              from the same icon path with explicit colour overrides so
+              both wings and body stay visible on the slate background. */}
+          <LogoMark variant="sage" size={28} color="#EBF4DD" bodyColor="#1C2420" />
           <div style={{ ...dmSerif, fontSize: 22, color: "#EBF4DD", letterSpacing: -0.2 }}>
             magicus
           </div>

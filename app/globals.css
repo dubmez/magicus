@@ -9,6 +9,17 @@ body {
   font-family: var(--font-dm-sans), sans-serif;
 }
 
+/* Site-wide keyboard-focus indicator. Many components use inline
+   `outline: none` to suppress the browser default; this ring brings
+   visibility back for keyboard-only users (WCAG 2.4.7). Pointer
+   focus is unaffected — `:focus-visible` only fires for keyboard
+   navigation in modern browsers. */
+:focus-visible {
+  outline: 2px solid #E8553E;
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
 @keyframes magicus-mic-pulse {
   0%, 100% {
     box-shadow: 0 0 0 0 rgba(245, 158, 11, 0.45);
