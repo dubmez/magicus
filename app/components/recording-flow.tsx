@@ -1037,10 +1037,9 @@ function ProcessingScreen() {
           className="flex items-center gap-2.5"
           style={{ textDecoration: "none" }}
         >
-          {/* Cream variant on the dark recording chrome — pulls the mark
-              from the same icon path with explicit colour overrides so
-              both wings and body stay visible on the slate background. */}
-          <LogoMark variant="sage" size={28} color="#EBF4DD" bodyColor="#1C2420" />
+          {/* Sage variant on the dark recording chrome — `onDark` flips
+              the wings to sage-mid and the stem to sage-light per spec. */}
+          <LogoMark variant="sage" size={28} onDark />
           <div style={{ ...dmSerif, fontSize: 22, color: "#EBF4DD", letterSpacing: -0.2 }}>
             magicus
           </div>

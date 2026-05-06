@@ -1,66 +1,106 @@
-// Magicus logo — two opposing wings (half-discs) with a thin vertical body
-// between them. Abstract butterfly mark used across the app and favicon.
+// Magicus logo — coral butterfly mark.
 //
-// Two visual variants:
-//   coral — used on the dark landing hero and the favicon
-//   sage  — used everywhere else (top bar, share view, recording flow)
+// Source of truth: ./brand/logo-spec (PDF). Geometry is a 24×24 grid:
+//   wings    elliptical, cx 8.5 / 15.5, rx 5, ry 7.2, cy 11
+//   stem     line x=12 from y=3.2 to y=20.8, stroke-width 1.6, round caps
+//   stamp    24×24 ink-deep square, rx=6 (when used)
 //
-// Wing and body colours can be overridden per call (e.g. cream wings on
-// the dark recording chrome) without changing the variant.
+// Colour rules:
+//   - Wings: coral (default) or sage. On a dark background, the sage
+//     variant lightens to sage-mid so it stays legible.
+//   - Stem: ink-dark on light backgrounds, sage-light on dark/stamp.
+//
+// Use `onDark` for the dark hero, the dark recording chrome, or any
+// near-black surface. Use `stamp` for app icons, favicons, and social
+// avatars — wraps the mark in the rounded ink-deep container.
 
 const dmSerif = { fontFamily: "var(--font-dm-serif), serif", fontStyle: "italic" as const };
 
-export type LogoVariant = "coral" | "sage";
+// Brand tokens. Mirrors the values in app/components/brand-colors.ts
+// where one exists; kept inline here so the logo file is fully
+// self-describing for handoff.
+export const BRAND_COLORS = {
+  inkDeep: "#2A3330",
+  ink: "#3B4953",
+  coral: "#E66B4D",
+  sage: "#547863",
+  sageMid: "#90AB8B",
+  sageLight: "#EBF4DD",
+  cream: "#FAFAF5",
+} as const;
 
-// Wings carry the brand colour; the body is a contrast accent that
-// reads as the butterfly's thorax/spine. Defaults are tuned for the
-// background each variant typically lands on.
-const MARK_PALETTE: Record<LogoVariant, { wing: string; body: string }> = {
-  coral: { wing: "#E8553E", body: "#F5F0E8" }, // cream body — for dark BGs
-  sage: { wing: "#547863", body: "#3B4953" }, // slate body — for light BGs
-};
+export type LogoVariant = "coral" | "sage";
 
 export function LogoMark({
   variant = "sage",
   size = 28,
-  color,
-  bodyColor,
+  onDark = false,
+  stamp = false,
+  wingColor,
+  stemColor,
 }: {
   variant?: LogoVariant;
   size?: number;
-  // Direct overrides for atypical backgrounds (e.g. cream-on-dark
-  // recording screen). Take precedence over `variant` defaults.
-  color?: string;
-  bodyColor?: string;
+  // True when the mark sits on a near-black surface. Drives stem
+  // colour and lightens sage wings to sage-mid for legibility.
+  onDark?: boolean;
+  // Wraps the mark in the rounded ink-deep stamp container. Used
+  // for app icons, favicons, and avatars per the spec.
+  stamp?: boolean;
+  // Per-call overrides; rare but useful for one-off contexts.
+  wingColor?: string;
+  stemColor?: string;
 }) {
-  const palette = MARK_PALETTE[variant];
-  const wing = color ?? palette.wing;
-  const body = bodyColor ?? palette.body;
+  const darkSurface = onDark || stamp;
+  const wings =
+    wingColor ??
+    (variant === "coral"
+      ? BRAND_COLORS.coral
+      : darkSurface
+        ? BRAND_COLORS.sageMid
+        : BRAND_COLORS.sage);
+  const stem =
+    stemColor ?? (darkSurface ? BRAND_COLORS.sageLight : BRAND_COLORS.ink);
+
   return (
     <svg
       width={size}
       height={size}
-      viewBox="0 0 32 32"
+      viewBox="0 0 24 24"
       xmlns="http://www.w3.org/2000/svg"
       role="img"
       aria-label="Magicus"
       style={{ flexShrink: 0 }}
     >
-      {/* Left wing — D-shape with the curve on the left */}
-      <path d="M14 4 a12 12 0 0 0 0 24 z" fill={wing} />
-      {/* Right wing — mirrored */}
-      <path d="M18 4 a12 12 0 0 1 0 24 z" fill={wing} />
-      {/* Body — thin rounded capsule between the wings */}
-      <rect x="15" y="3" width="2" height="26" rx="1" fill={body} />
+      {stamp && (
+        <rect x="0" y="0" width="24" height="24" rx="6" fill={BRAND_COLORS.inkDeep} />
+      )}
+      <ellipse cx="8.5" cy="11" rx="5" ry="7.2" fill={wings} />
+      <ellipse cx="15.5" cy="11" rx="5" ry="7.2" fill={wings} />
+      <line
+        x1="12"
+        y1="3.2"
+        x2="12"
+        y2="20.8"
+        stroke={stem}
+        strokeWidth="1.6"
+        strokeLinecap="round"
+      />
     </svg>
   );
 }
 
-// Full logo lockup: mark + wordmark. Use this in headers; `LogoMark`
-// alone is for tight spaces (mobile collapsed bars, the favicon).
+// Full lockup: mark + wordmark. Spec wordmark rules:
+//   - DM Serif Display italic, weight 400
+//   - Cap-height ≈ mark height (font-size ≈ 0.95× mark size in practice)
+//   - Letter-spacing -0.01em
+//   - Lockup gap = 0.32× mark size
+//   - Colour: ink on light, cream on dark
 export function Logo({
   variant = "sage",
   size = 28,
+  onDark = false,
+  stamp = false,
   wordmarkColor,
   showWordmark = true,
   className,
@@ -68,32 +108,35 @@ export function Logo({
 }: {
   variant?: LogoVariant;
   size?: number;
+  onDark?: boolean;
+  stamp?: boolean;
   wordmarkColor?: string;
   showWordmark?: boolean;
   className?: string;
   style?: React.CSSProperties;
 }) {
   const wmColor =
-    wordmarkColor ?? (variant === "coral" ? "#F5F0E8" : "#3B4953");
-  const wordSize = Math.round(size * 0.78);
+    wordmarkColor ?? (onDark ? BRAND_COLORS.cream : BRAND_COLORS.ink);
+  const wordSize = Math.round(size * 0.95);
+  const gap = Math.round(size * 0.32);
   return (
     <span
       className={className}
       style={{
         display: "inline-flex",
         alignItems: "center",
-        gap: 10,
+        gap,
         ...style,
       }}
     >
-      <LogoMark variant={variant} size={size} />
+      <LogoMark variant={variant} size={size} onDark={onDark} stamp={stamp} />
       {showWordmark && (
         <span
           style={{
             ...dmSerif,
             fontSize: wordSize,
             color: wmColor,
-            letterSpacing: -0.2,
+            letterSpacing: "-0.01em",
             lineHeight: 1,
           }}
         >

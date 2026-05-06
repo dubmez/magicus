@@ -1,8 +1,9 @@
 import { ImageResponse } from "next/og";
 
-// 180×180 apple-touch-icon. iOS Safari prefers a PNG and this is the
-// agreed iOS home-screen size. The mark mirrors app/icon.svg but with
-// background padding so it looks right when iOS rounds the corners.
+// 180×180 apple-touch-icon. Renders the spec's stamp variant directly
+// (rounded ink-deep square + coral wings + sage-light stem). iOS rounds
+// the corners further on home-screen; we add a touch of internal padding
+// so the mark stays clear of the OS rounding.
 
 export const size = { width: 180, height: 180 };
 export const contentType = "image/png";
@@ -14,16 +15,24 @@ export default function AppleIcon() {
         style={{
           width: "100%",
           height: "100%",
-          background: "#2B3D42",
+          background: "#2A3330",
           display: "flex",
           alignItems: "center",
           justifyContent: "center",
         }}
       >
-        <svg width="120" height="120" viewBox="0 0 32 32">
-          <path d="M14 4 a12 12 0 0 0 0 24 z" fill="#E8553E" />
-          <path d="M18 4 a12 12 0 0 1 0 24 z" fill="#E8553E" />
-          <rect x="15" y="3" width="2" height="26" rx="1" fill="#F5F0E8" />
+        <svg width="120" height="120" viewBox="0 0 24 24">
+          <ellipse cx="8.5" cy="11" rx="5" ry="7.2" fill="#E66B4D" />
+          <ellipse cx="15.5" cy="11" rx="5" ry="7.2" fill="#E66B4D" />
+          <line
+            x1="12"
+            y1="3.2"
+            x2="12"
+            y2="20.8"
+            stroke="#EBF4DD"
+            strokeWidth="1.6"
+            strokeLinecap="round"
+          />
         </svg>
       </div>
     ),

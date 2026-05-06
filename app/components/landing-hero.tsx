@@ -21,12 +21,13 @@ import { LogoMark } from "./logo";
 // ─── Palette ──────────────────────────────────────────────────────────────
 // Kept inline rather than in a tokens file because the colours here are
 // load-bearing for the hero design and reading them in context is easier
-// than chasing them through a theme.
-const HERO_BG = "#2B3D42"; // deep slate-teal — hero canvas
-const HERO_INK = "#F5F0E8"; // cream — primary type on dark
+// than chasing them through a theme. Tokens match the brand-colours
+// section of the logo spec — see app/components/logo.tsx BRAND_COLORS.
+const HERO_BG = "#2A3330"; // Ink Deep — hero canvas
+const HERO_INK = "#FAFAF5"; // Cream — primary type on dark
 const HERO_INK_DIM = "#A8BDB8"; // muted teal — body type on dark
-const EYEBROW = "#90AB8B"; // sage — eyebrow + secondary muted
-const CORAL = "#E8553E"; // accent — italic "you", Map it, browse CTA
+const EYEBROW = "#90AB8B"; // Sage Mid — eyebrow + secondary muted
+const CORAL = "#E66B4D"; // Coral — accent: italic "you", Map it, browse CTA
 
 const dmSerifItalic = {
   fontFamily: "var(--font-dm-serif), serif",
@@ -86,7 +87,7 @@ function HeroHeader({ onGoToCanvas }: { onGoToCanvas?: () => void }) {
       style={{ padding: "24px 32px", position: "relative", zIndex: 2 }}
     >
       <div className="flex items-center gap-2.5">
-        <LogoMark variant="coral" size={32} />
+        <LogoMark variant="coral" size={32} onDark />
         <span
           style={{
             ...dmSerifItalic,
@@ -139,10 +140,18 @@ function HeroBackgroundButterfly() {
         zIndex: 0,
       }}
     >
-      <svg viewBox="0 0 32 32" width="100%" height="100%">
-        <path d="M14 4 a12 12 0 0 0 0 24 z" fill="#FFFFFF" />
-        <path d="M18 4 a12 12 0 0 1 0 24 z" fill="#FFFFFF" />
-        <rect x="15" y="3" width="2" height="26" rx="1" fill="#FFFFFF" />
+      <svg viewBox="0 0 24 24" width="100%" height="100%">
+        <ellipse cx="8.5" cy="11" rx="5" ry="7.2" fill="#FFFFFF" />
+        <ellipse cx="15.5" cy="11" rx="5" ry="7.2" fill="#FFFFFF" />
+        <line
+          x1="12"
+          y1="3.2"
+          x2="12"
+          y2="20.8"
+          stroke="#FFFFFF"
+          strokeWidth="1.6"
+          strokeLinecap="round"
+        />
       </svg>
     </div>
   );
