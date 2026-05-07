@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import Link from "next/link";
 import {
   Sparkles,
   Mic,
@@ -922,6 +923,52 @@ function Pillar({
   );
 }
 
+// Landing footer — small wordmark line, copyright, and the legal links
+// Google's OAuth verification expects to see prominently linked from the
+// app's home page (privacy + terms). Sits on the same sage backdrop as
+// the pillars section so the page closes cleanly.
+function LandingFooter() {
+  const year = new Date().getFullYear();
+  return (
+    <footer
+      style={{
+        background: "#F7FAF2",
+        padding: "32px 32px 56px",
+        borderTop: "1px solid #EBF4DD",
+        ...dmSans,
+      }}
+    >
+      <div
+        className="max-w-[1100px] mx-auto flex flex-col sm:flex-row items-center justify-between gap-3"
+        style={{ fontSize: 13, color: "#90AB8B" }}
+      >
+        <div className="flex items-center gap-2">
+          <LogoMark variant="sage" size={18} />
+          <span style={{ ...dmSerifItalic, fontSize: 16, color: "#547863" }}>
+            magicus
+          </span>
+          <span style={{ marginLeft: 8 }}>© {year}</span>
+        </div>
+        <div className="flex items-center gap-5">
+          <Link href="/privacy" style={{ color: "#547863", textDecoration: "none" }} className="hover:underline">
+            Privacy
+          </Link>
+          <Link href="/terms" style={{ color: "#547863", textDecoration: "none" }} className="hover:underline">
+            Terms
+          </Link>
+          <a
+            href="mailto:team@netlearn.io"
+            style={{ color: "#547863", textDecoration: "none" }}
+            className="hover:underline"
+          >
+            Contact
+          </a>
+        </div>
+      </div>
+    </footer>
+  );
+}
+
 // 180px gradient that bridges the dark hero to the sage section below
 // it. Sits in normal flow so it pushes content rather than overlapping;
 // the bottom colour matches ButterflySection's background. We took the
@@ -970,6 +1017,7 @@ export function LandingHero({
           leaders…" was unsubstantiated and the in-group slang risked
           alienating more conservative visitors. Will return when we
           have real testimonials with names. */}
+      <LandingFooter />
     </div>
   );
 }
