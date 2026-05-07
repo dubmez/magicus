@@ -17,6 +17,12 @@ import {
 import { useAuth, useRequireAuth } from "@/lib/auth-context";
 import { AnimatedButterfly } from "./animated-butterfly";
 import { LogoMark } from "./logo";
+import { ClarificationStep } from "./clarification-step";
+import {
+  fetchClarifyQuestions,
+  combineDescriptionWithClarifications,
+  type ClarifyAnswer,
+} from "@/lib/clarify";
 
 // ─── Palette ──────────────────────────────────────────────────────────────
 // Kept inline rather than in a tokens file because the colours here are
@@ -266,7 +272,11 @@ function HeroSection({
 
 // ─── Prompt box ────────────────────────────────────────────────────────────
 type Mode = "describe" | "voice" | "record";
-type Stage = "idle" | "generating";
+// Submission stages now include `clarifying`: the brief moment between
+// the user submitting their description and the workflow generation
+// kicking off, during which we fetch up to 3 follow-up questions and
+// (if any are returned) collect answers in place inside the same card.
+type Stage = "idle" | "fetchingQuestions" | "clarifying" | "generating";
 
 function PromptBox({
   onMap,
@@ -400,19 +410,58 @@ function PromptBox({
     }
   };
 
-  const doSubmit = async () => {
-    if (stage !== "idle" || text.trim().length === 0) return;
-    if (isRecording) stopRecording();
-    setSubmitError(null);
+  // Clarification state. We hold the question list separately from the
+  // stage so we can keep showing the questions if generation fails after
+  // the user has already submitted them.
+  const [clarifyQuestions, setClarifyQuestions] = useState<string[]>([]);
+
+  // Fire-and-await the workflow generation with whatever description we
+  // ended up with (raw or augmented with clarifications). Centralised so
+  // both the "skip" path and the "answered" path share error handling.
+  const runGeneration = async (finalDescription: string) => {
     setStage("generating");
     try {
-      await onMap(text);
+      await onMap(finalDescription);
     } catch {
       setSubmitError(
         "Couldn't generate a workflow — check your connection and try again.",
       );
       setStage("idle");
+      setClarifyQuestions([]);
     }
+  };
+
+  const doSubmit = async () => {
+    if (stage !== "idle" || text.trim().length === 0) return;
+    if (isRecording) stopRecording();
+    setSubmitError(null);
+
+    // Step 1: ask the LLM for follow-up questions. fetchClarifyQuestions
+    // never throws — it returns [] on any failure, so a flaky clarify
+    // round-trip silently degrades to direct generation.
+    setStage("fetchingQuestions");
+    const questions = await fetchClarifyQuestions(text);
+
+    if (questions.length === 0) {
+      // Nothing to clarify (or call failed) — straight to generation.
+      await runGeneration(text);
+      return;
+    }
+
+    // Step 2: hand off to the in-card clarification UI. Generation runs
+    // when the user submits or skips.
+    setClarifyQuestions(questions);
+    setStage("clarifying");
+  };
+
+  const handleClarifySubmit = async (qa: ClarifyAnswer[]) => {
+    const combined = combineDescriptionWithClarifications(text, qa);
+    await runGeneration(combined);
+  };
+
+  const handleClarifySkip = async () => {
+    // Same generation path as before, with no clarifications appended.
+    await runGeneration(text);
   };
 
   const submit = () => {
@@ -433,8 +482,12 @@ function PromptBox({
     });
   };
 
-  const submitDisabled = text.trim().length === 0 || stage === "generating";
-  const showVoiceUI = mode === "voice";
+  const fetchingQuestions = stage === "fetchingQuestions";
+  const clarifying = stage === "clarifying";
+  const generating = stage === "generating";
+  const submitDisabled =
+    text.trim().length === 0 || generating || fetchingQuestions || clarifying;
+  const showVoiceUI = mode === "voice" && !clarifying;
 
   return (
     <div
@@ -454,6 +507,15 @@ function PromptBox({
         ...dmSans,
       }}
     >
+      {clarifying ? (
+        <ClarificationStep
+          questions={clarifyQuestions}
+          onSubmit={(qa) => { void handleClarifySubmit(qa); }}
+          onSkip={() => { void handleClarifySkip(); }}
+          busy={generating}
+        />
+      ) : (
+        <>
       {/* Input area — textarea OR voice waveform */}
       <div style={{ position: "relative", minHeight: 96 }}>
         {showVoiceUI ? (
@@ -610,10 +672,10 @@ function PromptBox({
             cursor: submitDisabled ? "not-allowed" : "pointer",
           }}
         >
-          {stage === "generating" ? (
+          {fetchingQuestions || generating ? (
             <>
               <Loader2 size={14} className="animate-spin" />
-              Mapping
+              {generating ? "Mapping" : ""}
             </>
           ) : (
             <>
@@ -623,6 +685,8 @@ function PromptBox({
           )}
         </button>
       </div>
+        </>
+      )}
     </div>
   );
 }

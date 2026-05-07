@@ -13,6 +13,13 @@ import {
 } from "lucide-react";
 import { AnimatedButterfly } from "./animated-butterfly";
 import { LogoMark } from "./logo";
+import { ClarificationStep } from "./clarification-step";
+import {
+  fetchClarifyQuestions,
+  combineDescriptionWithClarifications,
+  shouldClarifyRecording,
+  type ClarifyAnswer,
+} from "@/lib/clarify";
 
 const dmSerif = { fontFamily: "var(--font-dm-serif), serif", fontStyle: "italic" as const };
 const dmSans = { fontFamily: "var(--font-dm-sans), sans-serif" };
@@ -406,7 +413,11 @@ export async function extractFrame(
 
 // ─── Screens ───────────────────────────────────────────────────────────────
 
-type Stage = "prep" | "recording" | "review" | "processing" | "error";
+// Stages also include `clarifying` — for short recordings we ask the
+// LLM for follow-up questions between review and the chunked upload, so
+// the user has a chance to fill in details the recording probably
+// doesn't carry on its own.
+type Stage = "prep" | "recording" | "review" | "clarifying" | "processing" | "error";
 
 function PrepScreen({
   onStart,
@@ -1070,6 +1081,105 @@ function ProcessingScreen() {
   );
 }
 
+// Clarification surface — sits between review and processing for short
+// recordings where the transcript probably lacks enough detail. Same
+// dark chrome as the recording / processing screens for continuity, but
+// the question card itself is the standard white surface so the
+// ClarificationStep component renders identically across all three
+// surfaces (landing hero, in-app modal, here).
+function ClarifyScreen({
+  questions,
+  onSubmit,
+  onSkip,
+  onCancel,
+}: {
+  questions: string[];
+  onSubmit: (qa: ClarifyAnswer[]) => void;
+  onSkip: () => void;
+  onCancel: () => void;
+}) {
+  return (
+    <div
+      className="min-h-screen w-full flex flex-col"
+      style={{ background: "#1C2420", color: "#EBF4DD", ...dmSans }}
+    >
+      <header className="flex items-center justify-between" style={{ padding: "24px 32px" }}>
+        <Link
+          href="/"
+          aria-label="Go home"
+          className="flex items-center gap-2.5"
+          style={{ textDecoration: "none" }}
+        >
+          <LogoMark variant="sage" size={28} onDark />
+          <div style={{ ...dmSerif, fontSize: 22, color: "#EBF4DD", letterSpacing: -0.2 }}>
+            magicus
+          </div>
+        </Link>
+        <button
+          onClick={onCancel}
+          className="hover:opacity-80 transition-opacity"
+          style={{
+            background: "transparent",
+            color: "#90AB8B",
+            fontSize: 13,
+            border: "none",
+            cursor: "pointer",
+            padding: "8px 12px",
+          }}
+        >
+          Cancel
+        </button>
+      </header>
+
+      <section className="flex-1 flex flex-col items-center justify-center" style={{ padding: "32px 24px 80px" }}>
+        <div className="w-full" style={{ maxWidth: 560 }}>
+          <h1
+            style={{
+              ...dmSerif,
+              fontSize: 30,
+              color: "#EBF4DD",
+              lineHeight: 1.2,
+              marginBottom: 12,
+              textAlign: "center",
+              letterSpacing: -0.3,
+            }}
+          >
+            One quick step before we map it
+          </h1>
+          <p
+            style={{
+              fontSize: 14,
+              color: "#90AB8B",
+              lineHeight: 1.5,
+              marginBottom: 24,
+              textAlign: "center",
+            }}
+          >
+            Your recording was short — a couple of details will sharpen the
+            workflow.
+          </p>
+
+          <div
+            style={{
+              background: "#FFFFFF",
+              borderRadius: 16,
+              padding: "20px 24px",
+              boxShadow: "0 8px 48px rgba(0, 0, 0, 0.3)",
+              textAlign: "left",
+            }}
+          >
+            <ClarificationStep
+              questions={questions}
+              onSubmit={onSubmit}
+              onSkip={onSkip}
+            />
+          </div>
+        </div>
+      </section>
+    </div>
+  );
+}
+
 function ErrorScreen({
   onRetry,
   onCancel,
@@ -1251,18 +1361,26 @@ export function RecordingFlow({
     setStage("prep");
   }, []);
 
-  const handleMap = useCallback(async () => {
+  // Clarification questions to display before kicking off processing
+  // for short recordings. Empty when none should be shown.
+  const [clarifyQuestions, setClarifyQuestions] = useState<string[]>([]);
+
+  // Performs the actual chunked upload + Gemini call. Optionally takes
+  // clarifications which we splice into the transcript so the model can
+  // ground its understanding without changing the API contract.
+  const runProcessing = useCallback(async (qa: ClarifyAnswer[] = []) => {
     if (!reviewBlob) { failTo("No recording captured."); return; }
-    if (reviewDuration < 15) {
-      failTo(`Recording too short (${reviewDuration}s) — minimum is 15s.`);
-      return;
-    }
-    if (reviewBlob.size === 0) {
-      failTo("Recording captured 0 bytes — the screen-share stream may have ended before any chunks were emitted.");
-      return;
-    }
     setErrorReason(null);
     setStage("processing");
+
+    // Fold clarifications into the transcript. The recording route
+    // already passes `transcript` straight to the LLM, so this is the
+    // simplest hook — no new API field needed.
+    const augmentedTranscript =
+      qa.length > 0
+        ? combineDescriptionWithClarifications(reviewTranscript, qa)
+        : reviewTranscript;
+
     try {
       console.info(
         `[recording-flow] uploading ${(reviewBlob.size / 1024 / 1024).toFixed(2)}MB ${reviewMime}, ${reviewDuration}s, transcript=${reviewTranscript.length}c`
@@ -1336,7 +1454,7 @@ export function RecordingFlow({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           blobUrls,
-          transcript: reviewTranscript,
+          transcript: augmentedTranscript,
           durationSeconds: reviewDuration,
           mimeType: baseMime,
           fallbackFrames,
@@ -1383,6 +1501,48 @@ export function RecordingFlow({
     }
   }, [reviewBlob, reviewDuration, reviewTranscript, reviewMime, onSuccess, failTo]);
 
+  // Entry point from the review screen. Decides whether to surface the
+  // clarification step (short recordings / sparse transcripts) or jump
+  // straight to processing.
+  const handleMap = useCallback(async () => {
+    if (!reviewBlob) { failTo("No recording captured."); return; }
+    if (reviewDuration < 15) {
+      failTo(`Recording too short (${reviewDuration}s) — minimum is 15s.`);
+      return;
+    }
+    if (reviewBlob.size === 0) {
+      failTo("Recording captured 0 bytes — the screen-share stream may have ended before any chunks were emitted.");
+      return;
+    }
+
+    if (
+      reviewTranscript.trim().length > 0 &&
+      shouldClarifyRecording({
+        durationSeconds: reviewDuration,
+        transcript: reviewTranscript,
+      })
+    ) {
+      // Quick LLM call for follow-up questions; failure returns []
+      // (silent fallback to direct processing per spec).
+      const questions = await fetchClarifyQuestions(reviewTranscript);
+      if (questions.length > 0) {
+        setClarifyQuestions(questions);
+        setStage("clarifying");
+        return;
+      }
+    }
+
+    void runProcessing();
+  }, [reviewBlob, reviewDuration, reviewTranscript, runProcessing, failTo]);
+
+  const handleClarifySubmit = useCallback(async (qa: ClarifyAnswer[]) => {
+    await runProcessing(qa);
+  }, [runProcessing]);
+
+  const handleClarifySkip = useCallback(async () => {
+    await runProcessing();
+  }, [runProcessing]);
+
   // Cancel from any screen — clean up streams and bubble up.
   const handleCancel = useCallback(() => {
     recorder.cleanup();
@@ -1414,6 +1574,16 @@ export function RecordingFlow({
         transcript={reviewTranscript}
         onMap={handleMap}
         onReRecord={handleReRecord}
+        onCancel={handleCancel}
+      />
+    );
+  }
+  if (stage === "clarifying") {
+    return (
+      <ClarifyScreen
+        questions={clarifyQuestions}
+        onSubmit={(qa) => { void handleClarifySubmit(qa); }}
+        onSkip={() => { void handleClarifySkip(); }}
         onCancel={handleCancel}
       />
     );

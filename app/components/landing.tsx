@@ -5,13 +5,23 @@ import Link from "next/link";
 import { Sparkles, Send, Loader2, X, ArrowRight, Mic, AlertCircle, AlertTriangle } from "lucide-react";
 import { useRequireAuth } from "@/lib/auth-context";
 import { LogoMark } from "./logo";
+import { ClarificationStep } from "./clarification-step";
+import {
+  fetchClarifyQuestions,
+  combineDescriptionWithClarifications,
+  type ClarifyAnswer,
+} from "@/lib/clarify";
 
 const dmSerif = {
   fontFamily: "var(--font-dm-serif), serif",
   fontStyle: "italic" as const,
 };
 
-type Stage = "idle" | "generating";
+// Submission stages mirror the landing-hero PromptBox: a brief
+// `fetchingQuestions` state while we ask the LLM for follow-ups, then
+// `clarifying` if any came back, then `generating` once the user has
+// either answered or skipped.
+type Stage = "idle" | "fetchingQuestions" | "clarifying" | "generating";
 
 type SpeechRecognitionResultLike = {
   isFinal: boolean;
@@ -153,17 +163,43 @@ export function Landing({
     guard(() => startRecording());
   };
 
+  const [clarifyQuestions, setClarifyQuestions] = useState<string[]>([]);
+
+  const runGeneration = async (finalDescription: string) => {
+    setStage("generating");
+    try {
+      await onMap(finalDescription);
+    } catch {
+      setSubmitError("Couldn't generate a workflow — check your connection and try again.");
+      setStage("idle");
+      setClarifyQuestions([]);
+    }
+  };
+
   const doSubmit = async () => {
     if (stage !== "idle" || text.trim().length === 0) return;
     if (isRecording) stopRecording();
     setSubmitError(null);
-    setStage("generating");
-    try {
-      await onMap(text);
-    } catch {
-      setSubmitError("Couldn't generate a workflow — check your connection and try again.");
-      setStage("idle");
+
+    // Same clarification flow as landing-hero PromptBox: a quick LLM
+    // round-trip for follow-up questions, then either show them in
+    // place or proceed straight to generation.
+    setStage("fetchingQuestions");
+    const questions = await fetchClarifyQuestions(text);
+    if (questions.length === 0) {
+      await runGeneration(text);
+      return;
     }
+    setClarifyQuestions(questions);
+    setStage("clarifying");
+  };
+
+  const handleClarifySubmit = async (qa: ClarifyAnswer[]) => {
+    await runGeneration(combineDescriptionWithClarifications(text, qa));
+  };
+
+  const handleClarifySkip = async () => {
+    await runGeneration(text);
   };
 
   const submit = () => {
@@ -236,6 +272,15 @@ export function Landing({
         maps your workflow so you can refine, chain, and automate.
       </p>
 
+      {stage === "clarifying" ? (
+        <ClarificationStep
+          questions={clarifyQuestions}
+          onSubmit={(qa) => { void handleClarifySubmit(qa); }}
+          onSkip={() => { void handleClarifySkip(); }}
+          busy={stage !== "clarifying"}
+        />
+      ) : (
+        <>
       <textarea
         ref={taRef}
         value={text}
@@ -406,10 +451,10 @@ export function Landing({
                   : "pointer",
             }}
           >
-            {stage === "generating" ? (
+            {stage === "fetchingQuestions" || stage === "generating" ? (
               <>
                 <Loader2 size={14} className="animate-spin" />
-                Mapping
+                {stage === "generating" ? "Mapping" : ""}
               </>
             ) : (
               <>
@@ -420,6 +465,8 @@ export function Landing({
           </button>
         </div>
       </div>
+        </>
+      )}
     </div>
   );
 
