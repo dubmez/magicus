@@ -287,6 +287,17 @@ function PromptBox({
   onRecord: () => void;
 }) {
   const [text, setText] = useState("");
+  // If the user already typed and was sent through the OAuth gate, the
+  // text is sitting in sessionStorage. Rehydrate it post-mount (not in
+  // the useState initializer — that would mismatch SSR and trigger a
+  // hydration warning) so on any path back to the hero (failed OAuth,
+  // closed gate, race) they don't see an empty box.
+  useEffect(() => {
+    try {
+      const saved = sessionStorage.getItem("magicus_pending_input");
+      if (saved && saved.length > 0) setText(saved);
+    } catch { /* storage disabled — fall through with empty text */ }
+  }, []);
   const [mode, setMode] = useState<Mode>("describe");
   const [stage, setStage] = useState<Stage>("idle");
   const [phIdx, setPhIdx] = useState(0);

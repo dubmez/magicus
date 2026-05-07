@@ -143,15 +143,35 @@ function Home() {
     let pending: string | null = null;
     try {
       pending = sessionStorage.getItem("magicus_pending_input");
-      if (pending) sessionStorage.removeItem("magicus_pending_input");
     } catch { /* ignore */ }
-    if (pending && pending.trim().length > 0) {
-      void handleMap(pending);
-    }
+    if (!pending || pending.trim().length === 0) return;
+    // Only clear sessionStorage on success — if handleMap throws (API
+    // timeout, LLM blip) the text stays so the user can retry without
+    // having to re-type the whole prompt.
+    void (async () => {
+      try {
+        await handleMap(pending!);
+        try { sessionStorage.removeItem("magicus_pending_input"); } catch { /* ignore */ }
+      } catch (err) {
+        console.error("[magicus] post-auth replay failed", err);
+        setToast("Couldn't generate from your description. Try again — your text is still saved.");
+      }
+    })();
     // Run once on first hydrate-with-user; subsequent state changes
     // shouldn't re-trigger the replay.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [hydrated, user]);
+
+  // Surface OAuth callback failures. /auth/callback redirects here with
+  // ?auth_error=... when code exchange fails (PKCE mismatch, network
+  // blip, expired code). Without this, the user just lands back on the
+  // landing hero with no indication anything went wrong.
+  useEffect(() => {
+    const err = searchParams?.get("auth_error");
+    if (!err) return;
+    setToast("Sign-in didn't complete. Please try again.");
+    router.replace("/", { scroll: false });
+  }, [searchParams, router]);
 
   // Remix handoff — when a user clicks 'Remix this workflow' on a /w/[token]
   // page, that page writes the cloned workflow to localStorage and navigates
