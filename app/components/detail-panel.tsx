@@ -13,6 +13,8 @@ import {
   Clock,
   Hand,
   AlertTriangle,
+  ArrowRight,
+  BookOpen,
   Pencil,
   Lock,
   Share2,
@@ -933,16 +935,22 @@ function Legend() {
 function DetailFooter({
   workflow,
   effectiveReadOnly,
+  isLibrary,
   onAutomate,
   onShare,
+  onAdapt,
   onChain,
   onExport,
   onDelete,
 }: {
   workflow: Workflow;
   effectiveReadOnly: boolean;
+  // True when viewing a Library workflow — replaces the Automate /
+  // Share / overflow trio with a single full-width "Adapt this →" CTA.
+  isLibrary: boolean;
   onAutomate?: (id: string) => void;
   onShare?: (id: string) => void;
+  onAdapt?: (id: string) => void;
   onChain: (id: string) => void;
   onExport: (id: string) => void;
   onDelete: (id: string) => void;
@@ -960,6 +968,41 @@ function DetailFooter({
     document.addEventListener("mousedown", onDoc);
     return () => document.removeEventListener("mousedown", onDoc);
   }, [overflowOpen]);
+
+  // Library workflows replace the standard footer trio with a single
+  // primary CTA. Editing / sharing / exporting an unedited library
+  // entry doesn't make sense — the user adapts it first, then operates
+  // on their own copy.
+  if (isLibrary && onAdapt) {
+    return (
+      <div
+        style={{
+          borderTop: "1px solid #EBF4DD",
+          padding: "12px 20px",
+          background: "#FFFFFF",
+          flexShrink: 0,
+        }}
+      >
+        <button
+          onClick={() => onAdapt(workflow.id)}
+          className="w-full flex items-center justify-center gap-2 hover:opacity-90 transition-opacity"
+          style={{
+            background: "#E66B4D",
+            color: "#FFFFFF",
+            padding: "12px 18px",
+            borderRadius: 999,
+            fontSize: 14,
+            fontWeight: 500,
+            border: "none",
+            cursor: "pointer",
+          }}
+        >
+          Adapt this
+          <ArrowRight size={14} />
+        </button>
+      </div>
+    );
+  }
 
   return (
     <div
@@ -1128,6 +1171,7 @@ export function DetailPanel({
   onUpdate,
   onAutomate,
   onShare,
+  onAdapt,
 }: {
   workflow: Workflow | null;
   incomingWorkflows?: Workflow[];
@@ -1139,10 +1183,17 @@ export function DetailPanel({
   onUpdate: (id: string, changes: Partial<Workflow>) => void;
   onAutomate?: (id: string) => void;
   onShare?: (id: string) => void;
+  // "Adapt this" — clones the workflow (or its full chain) into the
+  // user's canvas. Only invoked when the workflow is a library entry.
+  onAdapt?: (id: string) => void;
 }) {
   const { user, openGate } = useAuth();
   const unauthReadOnly = !user && !readOnly;
   const effectiveReadOnly = readOnly || unauthReadOnly;
+  // Library workflows are flagged with `isSeeded` (and carry a libraryId).
+  // Read-only on the seeded canvas pivots from "you can't edit this" to
+  // "adapt it" — the footer swaps out as a result.
+  const isLibrary = !!workflow?.isSeeded;
 
   const update = useCallback(
     (changes: Partial<Workflow>) => {
@@ -1312,8 +1363,8 @@ export function DetailPanel({
             {/* Readiness bar + rationale */}
             <ReadinessBar score={derivedScore} rationale={workflow.automationRationale} />
 
-            {/* Provenance footer — Remixed-from / Remixed-by, both subtle */}
-            {(workflow.remixedFrom || remixCount > 0) && (
+            {/* Provenance footer — Adapted-from / Remixed-from / Remixed-by */}
+            {(workflow.adaptedFrom || workflow.remixedFrom || remixCount > 0) && (
               <div
                 className="flex flex-wrap items-center gap-x-3 gap-y-1"
                 style={{
@@ -1322,6 +1373,14 @@ export function DetailPanel({
                   color: "#90AB8B",
                 }}
               >
+                {workflow.adaptedFrom && (
+                  <span className="flex items-center gap-1">
+                    <BookOpen size={11} style={{ flexShrink: 0 }} />
+                    Adapted from {workflow.adaptedFrom.contributedBy?.name ?? "the Library"}
+                    <span style={{ color: "#EBF4DD", margin: "0 4px" }}>·</span>
+                    Library
+                  </span>
+                )}
                 {workflow.remixedFrom && (
                   <span className="flex items-center gap-1">
                     <Link2 size={11} style={{ flexShrink: 0 }} />
@@ -1563,8 +1622,10 @@ export function DetailPanel({
           <DetailFooter
             workflow={workflow}
             effectiveReadOnly={effectiveReadOnly}
+            isLibrary={isLibrary}
             onAutomate={onAutomate}
             onShare={onShare}
+            onAdapt={onAdapt}
             onChain={onChain}
             onExport={onExport}
             onDelete={onDelete}

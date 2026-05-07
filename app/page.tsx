@@ -9,10 +9,19 @@ import { DetailPanel } from "./components/detail-panel";
 import { ExportModal } from "./components/export-modal";
 import { AutomateModal } from "./components/automate-modal";
 import { ShareModal } from "./components/share-modal";
+import { DeleteCanvasModal } from "./components/delete-canvas-modal";
 import { Landing } from "./components/landing";
 import { LandingHero } from "./components/landing-hero";
 import { RecordingFlow, type RecordedWorkflow } from "./components/recording-flow";
-import { type Workflow, type Canvas as CanvasType, type Connection, LIBRARY_CANVAS_ID } from "@/lib/workflows";
+import {
+  type Workflow,
+  type Canvas as CanvasType,
+  type Connection,
+  LIBRARY_CANVAS_ID,
+  DEFAULT_CANVAS_ID,
+  myWorkflowsCanvas,
+  computeChains,
+} from "@/lib/workflows";
 import { useWorkflows } from "@/lib/use-workflows";
 import { workflowToMarkdown, allWorkflowsToMarkdown } from "@/lib/markdown";
 import { useAuth, useRequireAuth } from "@/lib/auth-context";
@@ -89,6 +98,9 @@ function Home() {
   const [recordingOpen, setRecordingOpen] = useState(false);
   const [shareTargetId, setShareTargetId] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
+  // Canvas-deletion state. `deleteCanvasId` opens the confirmation
+  // modal for that canvas; the actual removal runs only on confirm.
+  const [deleteCanvasId, setDeleteCanvasId] = useState<string | null>(null);
 
   // After a sign-out, drop the user back to the landing hero. They likely
   // intended to leave the workspace, not stare at someone else's canvas.
@@ -116,7 +128,7 @@ function Home() {
   // Auto-dismiss the success toast after 3s.
   useEffect(() => {
     if (!toast) return;
-    const t = setTimeout(() => setToast(null), 3000);
+    const t = setTimeout(() => setToast(null), 4000);
     return () => clearTimeout(t);
   }, [toast]);
 
@@ -252,6 +264,58 @@ function Home() {
     });
   };
 
+  // Open the delete-canvas confirmation. Library can never be deleted —
+  // the sidebar already hides the overflow there, but defence in depth.
+  // If the user has only one editable canvas, we can't delete it without
+  // leaving them stranded — surface a toast nudge instead.
+  const handleRequestDeleteCanvas = (id: string) => {
+    if (id === LIBRARY_CANVAS_ID) return;
+    const userCanvasCount = canvases.filter(
+      (c) => !c.readOnly && c.id !== LIBRARY_CANVAS_ID
+    ).length;
+    if (userCanvasCount <= 1) {
+      setToast("You need at least one canvas — rename it instead.");
+      return;
+    }
+    setDeleteCanvasId(id);
+  };
+
+  // Actually remove the canvas (and the workflows it owned) once the user
+  // confirms in the modal. Workflows that live on other canvases as well
+  // are preserved; only ones unique to this canvas are removed.
+  const handleConfirmDeleteCanvas = () => {
+    if (!deleteCanvasId) return;
+    const target = canvases.find((c) => c.id === deleteCanvasId);
+    if (!target) {
+      setDeleteCanvasId(null);
+      return;
+    }
+
+    const otherCanvases = canvases.filter((c) => c.id !== deleteCanvasId);
+    const idsKeptElsewhere = new Set(
+      otherCanvases.flatMap((c) => c.workflowIds)
+    );
+    const idsToRemove = target.workflowIds.filter(
+      (id) => !idsKeptElsewhere.has(id)
+    );
+
+    setWorkflows((prev) => prev.filter((w) => !idsToRemove.includes(w.id)));
+    setCanvases(otherCanvases);
+
+    // Switch to the next available editable canvas; fall back to the
+    // Library if the user's last user-canvas is gone (shouldn't happen
+    // due to the guard in handleRequestDeleteCanvas, but defensive).
+    const nextEditable = otherCanvases.find(
+      (c) => !c.readOnly && c.id !== LIBRARY_CANVAS_ID
+    );
+    setActiveCanvasId(nextEditable?.id ?? otherCanvases[0]?.id ?? DEFAULT_CANVAS_ID);
+    setSelectedId(null);
+    setSelectedIds(new Set());
+    setFocusedChainKey(null);
+    setDeleteCanvasId(null);
+    setToast(`"${target.name}" deleted`);
+  };
+
   const handleSelectFromSidebar = (id: string) => {
     setSelectedId(id);
     setSelectedIds(new Set());
@@ -325,6 +389,110 @@ function Home() {
     },
     [activeCanvas, canvases, workflows, setWorkflows, setCanvases, setActiveCanvasId, updateCanvas]
   );
+
+  // "Adapt this" — clone a Library workflow (or the full chain it
+  // belongs to) into the user's editable canvas. Auth-gated; if no
+  // editable canvas exists we create "My Workflows" on the fly.
+  // Library fields strip off the clone and `adaptedFrom` provenance
+  // is written so the detail panel can render the credit row.
+  const handleAdapt = useCallback((libraryWorkflowId: string) => {
+    guard(() => {
+      const library = canvases.find((c) => c.id === LIBRARY_CANVAS_ID);
+      if (!library) return;
+      const sourceWorkflow = workflows.find((w) => w.id === libraryWorkflowId);
+      if (!sourceWorkflow) return;
+
+      // Resolve the chain this workflow belongs to. computeChains returns
+      // connected components on the Library canvas; a single-workflow
+      // entry comes back as a length-1 array.
+      const chains = computeChains(library.workflowIds, library.connections);
+      const chainIds =
+        chains.find((c) => c.includes(libraryWorkflowId)) ?? [libraryWorkflowId];
+      const chainWorkflows = chainIds
+        .map((id) => workflows.find((w) => w.id === id))
+        .filter(Boolean) as Workflow[];
+      if (chainWorkflows.length === 0) return;
+
+      // Resolve the destination canvas. Prefer the user's currently-
+      // active editable canvas; otherwise the first editable one;
+      // otherwise create "My Workflows" on the fly so a brand-new user
+      // adapting a workflow ends up with a sensible default canvas.
+      let target = activeCanvas && !activeCanvas.readOnly && activeCanvas.id !== LIBRARY_CANVAS_ID
+        ? activeCanvas
+        : canvases.find((c) => !c.readOnly && c.id !== LIBRARY_CANVAS_ID);
+      if (!target) {
+        target = { ...myWorkflowsCanvas };
+        setCanvases((prev) => [...prev, target!]);
+      }
+      const targetId = target.id;
+      if (targetId !== activeCanvasId) setActiveCanvasId(targetId);
+
+      // Layout: place the cloned chain to the right of any existing
+      // content on the target canvas, in a single horizontal row.
+      const targetWfs = workflows.filter((w) =>
+        target!.workflowIds.includes(w.id)
+      );
+      const baseX = targetWfs.length > 0
+        ? Math.max(...targetWfs.map((w) => w.x)) + 800
+        : 0;
+      const baseY = 400;
+      const now = Date.now();
+
+      // Re-id every workflow in the chain and record the mapping so we
+      // can re-wire connections to the new ids without breaking links.
+      const idMap = new Map<string, string>();
+      chainWorkflows.forEach((w, i) => {
+        idMap.set(w.id, `wf-${now}-${i}`);
+      });
+      const cloned: Workflow[] = chainWorkflows.map((w, i) => ({
+        ...w,
+        id: idMap.get(w.id)!,
+        x: baseX + i * 800,
+        y: baseY,
+        // Strip Library-specific fields — the cloned workflow is a
+        // user workflow now, fully editable.
+        libraryId: undefined,
+        category: undefined,
+        contributedBy: undefined,
+        adaptCount: undefined,
+        isSeeded: undefined,
+        // Record provenance so the detail panel can show
+        // "Adapted from {Name} · Library".
+        adaptedFrom: {
+          libraryId: w.libraryId ?? w.id,
+          name: w.name,
+          contributedBy: w.contributedBy,
+        },
+      }));
+
+      // Re-wire the chain's internal connections with the new ids.
+      // Connections crossing chain boundaries are filtered out (none
+      // exist in the seeded library, but defensive).
+      const newConnections: Connection[] = library.connections
+        .filter((c) => idMap.has(c.from) && idMap.has(c.to))
+        .map((c) => ({
+          from: idMap.get(c.from)!,
+          to: idMap.get(c.to)!,
+          label: c.label,
+        }));
+
+      setWorkflows((prev) => [...prev, ...cloned]);
+      updateCanvas(targetId, {
+        workflowIds: [...target!.workflowIds, ...cloned.map((w) => w.id)],
+        connections: [...target!.connections, ...newConnections],
+      });
+      const firstId = cloned[0].id;
+      setSelectedId(firstId);
+      setSelectedIds(new Set());
+      setFocusId(firstId + ":" + now);
+      setStarted(true);
+      setToast(
+        cloned.length > 1
+          ? "Chain added to My Workflows — it's yours to edit."
+          : "Workflow added to My Workflows — it's yours to edit."
+      );
+    });
+  }, [activeCanvas, activeCanvasId, canvases, workflows, guard, setActiveCanvasId, setCanvases, setWorkflows, updateCanvas]);
 
   const handleMap = async (description: string) => {
     // Never add new workflows to a read-only canvas — switch to the editable one
@@ -546,6 +714,7 @@ function Home() {
           sharedWorkflowIds={sharedWorkflowIds}
           onSwitchCanvas={handleSwitchCanvas}
           onRenameCanvas={handleRenameCanvas}
+          onDeleteCanvas={handleRequestDeleteCanvas}
           onCreateCanvas={handleCreateCanvas}
           onSelectWorkflow={handleSelectFromSidebar}
           onFocusChain={handleFocusChain}
@@ -586,6 +755,7 @@ function Home() {
             onUpdate={handleUpdate}
             onAutomate={() => setAutomateOpen(true)}
             onShare={(id) => setShareTargetId(id)}
+            onAdapt={handleAdapt}
           />
         </div>
       </div>
@@ -622,7 +792,20 @@ function Home() {
         onClose={() => setShareTargetId(null)}
       />
 
-      {/* Success toast — auto-dismisses after 3s via the effect above. */}
+      {deleteCanvasId && (() => {
+        const target = canvases.find((c) => c.id === deleteCanvasId);
+        if (!target) return null;
+        return (
+          <DeleteCanvasModal
+            canvasName={target.name}
+            workflowCount={target.workflowIds.length}
+            onConfirm={handleConfirmDeleteCanvas}
+            onCancel={() => setDeleteCanvasId(null)}
+          />
+        );
+      })()}
+
+      {/* Success toast — auto-dismisses after 4s via the effect above. */}
       {toast && (
         <div
           style={{

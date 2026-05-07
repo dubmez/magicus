@@ -829,7 +829,7 @@ export default function ShareView({ settings }: { settings: ShareSettings }) {
               whiteSpace: "nowrap",
             }}
           >
-            Remix this workflow
+            Adapt this workflow
             <ArrowRight size={13} />
           </button>
         </div>
