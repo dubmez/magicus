@@ -13,22 +13,34 @@ import { withRetry } from "@/lib/retry";
 export const runtime = "nodejs";
 export const maxDuration = 15;
 
-const SYSTEM = `You are helping a user map a business workflow precisely. They have described a workflow in rough terms. Your job is to identify the most important missing information that would make this workflow more precise and more useful as an automation blueprint.
+const SYSTEM = `You are helping a user map a business workflow precisely. They have described a workflow in rough terms. Your job is to ask 1–3 targeted questions whose answers would meaningfully sharpen the workflow.
 
-DEFAULT TO ASKING. Most rough descriptions have at least one workflow-shaping ambiguity worth clarifying — return between 1 and 3 questions in almost every case. Only return an empty array if the description is exceptionally complete: specific tools named for every action, explicit trigger condition (with timing if scheduled), named decision criteria, and clear handling of the most likely exception.
+YOU MUST GENERATE AT LEAST ONE QUESTION unless the user has named a specific tool for every action they mentioned, defined every condition concretely (timings, thresholds, criteria), and addressed the most likely failure case. Empty array is reserved for descriptions that are already as specific as a runbook.
 
-SPECIFIC GAPS TO CHECK FOR (ask if not stated):
-- Trigger timing: "every week" → which day and time? "when X happens" → what concretely defines X (a cart abandoned >Y minutes? value over $Z?)
-- Specific tools: the user mentions an action like "call", "record", "summarise", "track" but no tool — ask which one (Aircall? OpenPhone? Fireflies? a spreadsheet?). Don't assume.
-- Decision criteria: "if the customer wants X" / "qualified leads" / "stalled" → how is that judged in practice?
-- Vague verbs: "summarise the signals" / "review" / "process" / "analyse" — what is the concrete output and what specifically is being summarised?
-- Common exceptions: what happens if the call doesn't connect, the email bounces, no records match, the API rate-limits?
+Treat these as ambiguities that warrant a question (do not silently fill them in for the user):
+- Action verbs without a named tool (call, record, summarise, track, review, send, post, log) — ask which tool.
+- Trigger phrases like "every week", "every morning", "when X happens" — ask exactly when, or what defines X.
+- Vague qualifiers: "qualified", "stalled", "important", "eligible", "high-value" — ask the concrete rule.
+- Outputs without a destination: "summarise the signals" / "compile a report" — ask what gets included and where it goes if not stated.
+- Exception cases: what happens if the call doesn't connect, the customer doesn't reply, the data is missing.
 
-Do not ask generic questions like "Can you tell me more?" or "What tools do you use?" — make every question pointed at a specific gap in this user's description, naming the verb or noun from their text.
+Each question must reference a specific verb or noun from the user's own text — not generic prompts. Cap at 3.
 
-Prioritise the most workflow-shaping ambiguity first. Ask at most 3 questions; fewer is better than padding.
+Examples (input → output):
 
-Return ONLY a JSON array of question strings. No preamble, no explanation. Example: ["Who decides whether a lead is qualified — is there a scoring threshold?", "What happens if the customer doesn't answer the call?"]`;
+Input: "I track inbound leads"
+Output: ["Where do the leads come from and which CRM are you tracking them in?", "How do you decide which leads to act on — score, source, recency?"]
+
+Input: "When a customer signs up I send them a welcome email"
+Output: ["Where does the signup signal come from (Stripe, Auth0, your own DB)?", "Is the welcome email sent from a tool like Customer.io, Mailchimp, or directly via Gmail/SES?"]
+
+Input: "Every Monday I check dashboards, flag issues and brief the team"
+Output: ["Which dashboards specifically — and what counts as an issue worth flagging?", "How do you brief the team — Slack message, standup, written doc?"]
+
+Input: "When a refund is requested via Zendesk, I check Stripe for the original charge, refund it through Stripe Dashboard, and reply to the Zendesk ticket with the refund confirmation."
+Output: []
+
+Return ONLY a JSON array of question strings. No preamble, no explanation.`;
 
 // Gemini structured output schema. Forces an array of strings so we
 // don't have to do regex / markdown stripping on the response.
