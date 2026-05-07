@@ -128,8 +128,39 @@ export type Canvas = {
   readOnly?: boolean;
 };
 
-export const EXAMPLES_CANVAS_ID = "canvas-examples";
+// Library is the read-only collection users browse and adapt from.
+// Canvas id stays as the legacy "canvas-examples" string so existing
+// stored records keep matching after the rename. The constant name and
+// every user-facing label updates to "Library".
+export const LIBRARY_CANVAS_ID = "canvas-examples";
 export const DEFAULT_CANVAS_ID = "canvas-default";
+
+// Workflow category for the Library. Each seeded library workflow
+// belongs to exactly one category; community contributions later
+// inherit the same set.
+export type LibraryCategory =
+  | "solo_founder"
+  | "gtm_operator"
+  | "ops_manager"
+  | "ecommerce_ops";
+
+export const LIBRARY_CATEGORY_META: Record<
+  LibraryCategory,
+  { label: string }
+> = {
+  solo_founder: { label: "Solo Founder" },
+  gtm_operator: { label: "GTM Operator" },
+  ops_manager: { label: "Ops Manager" },
+  ecommerce_ops: { label: "E-commerce Ops" },
+};
+
+// Order categories appear in the sidebar.
+export const LIBRARY_CATEGORY_ORDER: LibraryCategory[] = [
+  "solo_founder",
+  "gtm_operator",
+  "ops_manager",
+  "ecommerce_ops",
+];
 
 // ─── Chain utilities ──────────────────────────────────────────────────────────
 
@@ -476,17 +507,24 @@ export const initialWorkflows: Workflow[] = [
   },
 ];
 
-export const myBusinessCanvas: Canvas = {
+// Default user canvas that ships empty for new accounts. Renamed from
+// "My Business" to "My Workflows" — broader and inclusive of solo
+// users, creators, and personal automation, not just companies.
+export const myWorkflowsCanvas: Canvas = {
   id: DEFAULT_CANVAS_ID,
-  name: "My Business",
+  name: "My Workflows",
   workflowIds: [],
   connections: [],
   chainNames: {},
 };
 
-export const examplesCanvas: Canvas = {
-  id: EXAMPLES_CANVAS_ID,
-  name: "Examples",
+// Read-only Library canvas containing the seeded templates. Sidebar
+// labels read "Library"; the canvas id keeps its legacy
+// "canvas-examples" string so stored activeCanvasId records still
+// resolve correctly after the rename.
+export const libraryCanvas: Canvas = {
+  id: LIBRARY_CANVAS_ID,
+  name: "Library",
   workflowIds: initialWorkflows.map((w) => w.id),
   // Connections define each archetype as one chain (computeChains groups them
   // by connected component). Labels carry meaning where one workflow leads

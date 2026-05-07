@@ -80,7 +80,7 @@ function CanvasName({
         padding: 0,
         cursor: "pointer",
       }}
-      title={readOnly ? "Read-only" : "Click to switch · Double-click to rename"}
+      title={readOnly ? "Read-only — adapt workflows from here" : "Click to switch · Double-click to rename"}
     >
       <span className="truncate" style={{ opacity: readOnly ? 0.85 : 1 }}>{name}</span>
       {!readOnly && (
@@ -108,7 +108,7 @@ function CanvasName({
             flexShrink: 0,
           }}
         >
-          Examples
+          Library
         </span>
       )}
     </button>

@@ -12,7 +12,7 @@ import { ShareModal } from "./components/share-modal";
 import { Landing } from "./components/landing";
 import { LandingHero } from "./components/landing-hero";
 import { RecordingFlow, type RecordedWorkflow } from "./components/recording-flow";
-import { type Workflow, type Canvas as CanvasType, type Connection, EXAMPLES_CANVAS_ID } from "@/lib/workflows";
+import { type Workflow, type Canvas as CanvasType, type Connection, LIBRARY_CANVAS_ID } from "@/lib/workflows";
 import { useWorkflows } from "@/lib/use-workflows";
 import { workflowToMarkdown, allWorkflowsToMarkdown } from "@/lib/markdown";
 import { useAuth, useRequireAuth } from "@/lib/auth-context";
@@ -68,10 +68,14 @@ function Home() {
   // users — useful for marketing links and for testing the hero on
   // mobile without an incognito window.
   const welcomeParam = searchParams?.get("welcome") === "1";
-  // ?examples=1 takes the user straight to the Examples canvas. Set
-  // when "browse example workflows" is clicked so the browser back
-  // button returns to the landing rather than getting stuck.
-  const examplesParam = searchParams?.get("examples") === "1";
+  // ?library=1 takes the user straight to the Library. Set when
+  // "browse the workflow library" is clicked so the browser back
+  // button returns to the landing rather than getting stuck. We
+  // also accept the legacy ?examples=1 param so any links shared
+  // before the rename still work.
+  const libraryParam =
+    searchParams?.get("library") === "1" ||
+    searchParams?.get("examples") === "1";
 
   const [started, setStarted] = useState(false);
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -93,21 +97,21 @@ function Home() {
   }, [hydrated, user]);
 
   // Sync `started` with the URL. ?welcome=1 always wins (force hero);
-  // ?examples=1 forces the Examples canvas. When the user backs out
-  // of `?examples=1` to a clean URL, this effect resets started so an
+  // ?library=1 forces the Library canvas. When the user backs out of
+  // `?library=1` to a clean URL, this effect resets started so an
   // unauthed visitor sees the hero again.
   useEffect(() => {
     if (welcomeParam) {
       setStarted(false);
       return;
     }
-    if (examplesParam) {
-      setActiveCanvasId(EXAMPLES_CANVAS_ID);
+    if (libraryParam) {
+      setActiveCanvasId(LIBRARY_CANVAS_ID);
       setStarted(true);
       return;
     }
     if (!user) setStarted(false);
-  }, [welcomeParam, examplesParam, user, setActiveCanvasId]);
+  }, [welcomeParam, libraryParam, user, setActiveCanvasId]);
 
   // Auto-dismiss the success toast after 3s.
   useEffect(() => {
@@ -507,11 +511,11 @@ function Home() {
         // and flips `started` so the page transitions to the canvas with the
         // generated workflow already selected.
         onMap={handleMap}
-        onBrowseExamples={() => {
+        onBrowseLibrary={() => {
           // Push a URL change so the browser back button returns to the
           // landing instead of being stuck on the canvas. The synced
           // useEffect above flips `started` and the active canvas.
-          router.push("/?examples=1");
+          router.push("/?library=1");
         }}
         onRecord={() => setRecordingOpen(true)}
         // Signed-in user viewing the landing via ?welcome=1 — give them a

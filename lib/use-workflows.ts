@@ -3,9 +3,9 @@
 import { useState, useEffect } from "react";
 import {
   initialWorkflows,
-  myBusinessCanvas,
-  examplesCanvas,
-  EXAMPLES_CANVAS_ID,
+  myWorkflowsCanvas,
+  libraryCanvas,
+  LIBRARY_CANVAS_ID,
   DEFAULT_CANVAS_ID,
   type Workflow,
   type Canvas,
@@ -39,7 +39,7 @@ function migrateWorkflows(wfs: Workflow[]): Workflow[] {
 }
 
 // Seed workflows are reconstructed client-side; we never persist them to
-// the user's row in Supabase since they're not user data. The Examples
+// the user's row in Supabase since they're not user data. The Library
 // canvas keeps referencing them by id and the merge below puts them back
 // into the live array for rendering.
 const SEED_WORKFLOW_IDS = new Set(initialWorkflows.map((w) => w.id));
@@ -51,12 +51,24 @@ function mergeWithSeedWorkflows(wfs: Workflow[]): Workflow[] {
   return missing.length > 0 ? [...base, ...missing] : base;
 }
 
-function withExamplesCanvas(userCanvases: Canvas[]): Canvas[] {
-  // The Examples canvas is shipped as part of the app and always reflects
+// Rename pre-existing default canvases that still carry the legacy
+// "My Business" label so users land on "My Workflows" after the
+// rename. Custom names users have set are left untouched.
+function migrateDefaultCanvasName(c: Canvas): Canvas {
+  if (c.id === DEFAULT_CANVAS_ID && c.name === "My Business") {
+    return { ...c, name: "My Workflows" };
+  }
+  return c;
+}
+
+function withLibraryCanvas(userCanvases: Canvas[]): Canvas[] {
+  // The Library canvas is shipped as part of the app and always reflects
   // the latest seed; replace any stored copy with the current export so
   // updates to the seed data ship to existing users on next load.
-  const out = userCanvases.filter((c) => c.id !== EXAMPLES_CANVAS_ID);
-  out.push({ ...examplesCanvas });
+  const out = userCanvases
+    .filter((c) => c.id !== LIBRARY_CANVAS_ID)
+    .map(migrateDefaultCanvasName);
+  out.push({ ...libraryCanvas });
   return out;
 }
 
@@ -67,9 +79,9 @@ function initWorkflowsLocal(): Workflow[] {
 function initCanvasesLocal(): Canvas[] {
   const stored = readCanvasesSync();
   if (stored.length === 0) {
-    return [{ ...myBusinessCanvas }, { ...examplesCanvas }];
+    return [{ ...myWorkflowsCanvas }, { ...libraryCanvas }];
   }
-  return withExamplesCanvas(stored);
+  return withLibraryCanvas(stored);
 }
 
 export function useWorkflows() {
@@ -85,7 +97,7 @@ export function useWorkflows() {
     const cvs = initCanvasesLocal();
     const stored = readActiveCanvasIdSync() ?? "";
     if (cvs.find((c) => c.id === stored)) return stored;
-    // Default to the user's editable canvas, not Examples
+    // Default to the user's editable canvas, not the Library
     const editable = cvs.find((c) => !c.readOnly);
     return editable?.id ?? cvs[0]?.id ?? DEFAULT_CANVAS_ID;
   });
@@ -135,18 +147,18 @@ export function useWorkflows() {
             ]);
             if (cancelled) return;
             setWorkflows(mergeWithSeedWorkflows(userWfs));
-            setCanvases(withExamplesCanvas(userCanvases));
+            setCanvases(withLibraryCanvas(userCanvases));
           } else {
-            // Truly fresh user — give them the default empty My Business
-            // canvas alongside Examples.
+            // Truly fresh user — give them the default empty My Workflows
+            // canvas alongside the Library.
             if (cancelled) return;
             setWorkflows(mergeWithSeedWorkflows([]));
-            setCanvases([{ ...myBusinessCanvas }, { ...examplesCanvas }]);
+            setCanvases([{ ...myWorkflowsCanvas }, { ...libraryCanvas }]);
           }
         } else {
           if (cancelled) return;
           setWorkflows(mergeWithSeedWorkflows(supaWfs));
-          setCanvases(withExamplesCanvas(supaCanvases));
+          setCanvases(withLibraryCanvas(supaCanvases));
         }
       } catch (err) {
         console.error("[magicus] revalidation failed; using cached data", err);

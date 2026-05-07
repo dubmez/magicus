@@ -170,11 +170,11 @@ function HeroBackgroundButterfly() {
 // a stacking context above the silhouette.
 function HeroSection({
   onMap,
-  onBrowseExamples,
+  onBrowseLibrary,
   onRecord,
 }: {
   onMap: (description: string) => Promise<void>;
-  onBrowseExamples: () => void;
+  onBrowseLibrary: () => void;
   onRecord: () => void;
 }) {
   return (
@@ -251,7 +251,7 @@ function HeroSection({
         <PromptBox onMap={onMap} onRecord={onRecord} />
 
         <button
-          onClick={onBrowseExamples}
+          onClick={onBrowseLibrary}
           className="hover:underline flex items-center gap-1 mt-6"
           style={{
             background: "transparent",
@@ -263,7 +263,7 @@ function HeroSection({
             cursor: "pointer",
           }}
         >
-          Or browse example workflows
+          Or browse the workflow library
           <ArrowRight size={13} />
         </button>
       </div>
@@ -989,12 +989,12 @@ function HeroToSageTransition() {
 // ─── Public component ─────────────────────────────────────────────────────
 export function LandingHero({
   onMap,
-  onBrowseExamples,
+  onBrowseLibrary,
   onRecord,
   onGoToCanvas,
 }: {
   onMap: (description: string) => Promise<void>;
-  onBrowseExamples: () => void;
+  onBrowseLibrary: () => void;
   onRecord: () => void;
   // Optional: when set, the header CTA flips to "Go to your canvas →"
   // for signed-in users who reached the landing via the escape hatch.
@@ -1006,7 +1006,7 @@ export function LandingHero({
         <HeroHeader onGoToCanvas={onGoToCanvas} />
         <HeroSection
           onMap={onMap}
-          onBrowseExamples={onBrowseExamples}
+          onBrowseLibrary={onBrowseLibrary}
           onRecord={onRecord}
         />
       </div>

@@ -1264,7 +1264,7 @@ export function DetailPanel({
                   fontStyle: "italic",
                 }}
               >
-                Read-only — workflows on the Examples canvas can&apos;t be edited.
+                This is a library workflow — adapt it to make it yours.
               </div>
             )}
             {unauthReadOnly && (

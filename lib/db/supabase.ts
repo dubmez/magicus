@@ -118,7 +118,7 @@ async function loadCanvases(): Promise<Canvas[]> {
 
 async function saveCanvases(canvases: Canvas[]): Promise<void> {
   const userId = await requireUserId();
-  // Skip read-only canvases — Examples is a client-side seed, never
+  // Skip read-only canvases — the Library is a client-side seed, never
   // persisted server-side. Each user reconstructs it locally.
   const writable = canvases.filter((c) => !c.readOnly);
 
