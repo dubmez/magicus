@@ -118,7 +118,10 @@ export async function POST(req: NextRequest) {
     try {
       parsed = JSON.parse(text);
     } catch {
-      return NextResponse.json({ questions: [] as string[] });
+      return NextResponse.json({
+        questions: [] as string[],
+        ...(debug ? { _raw: text, _parseError: true } : {}),
+      });
     }
     if (!Array.isArray(parsed)) {
       return NextResponse.json({
