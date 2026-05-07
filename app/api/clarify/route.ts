@@ -106,7 +106,14 @@ export async function POST(req: NextRequest) {
     }
 
     const text = response.text;
-    if (!text) return NextResponse.json({ questions: [] as string[] });
+    // Optional debug echo — only when ?debug=1 in the request URL.
+    // Lets us see the raw model output without enabling verbose logging
+    // for every clarify call. Remove once the calibration is settled.
+    const debug = new URL(req.url).searchParams.get("debug") === "1";
+    if (debug) {
+      console.info("[clarify] raw response", text);
+    }
+    if (!text) return NextResponse.json({ questions: [] as string[], ...(debug ? { _raw: null } : {}) });
     let parsed: unknown;
     try {
       parsed = JSON.parse(text);
@@ -114,12 +121,18 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ questions: [] as string[] });
     }
     if (!Array.isArray(parsed)) {
-      return NextResponse.json({ questions: [] as string[] });
+      return NextResponse.json({
+        questions: [] as string[],
+        ...(debug ? { _raw: text, _parsed: parsed } : {}),
+      });
     }
     const questions = parsed
       .filter((q): q is string => typeof q === "string" && q.trim().length > 0)
       .slice(0, 3);
-    return NextResponse.json({ questions });
+    return NextResponse.json({
+      questions,
+      ...(debug ? { _raw: text } : {}),
+    });
   } catch (err) {
     // Hard fall-through: never propagate errors to the user. Skipping
     // clarification gracefully is better than blocking the flow.
