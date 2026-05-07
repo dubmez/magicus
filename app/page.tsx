@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Canvas } from "./components/canvas";
 import { TopBar } from "./components/top-bar";
@@ -37,7 +37,18 @@ async function generateFromAPI(description: string): Promise<GeneratedResponse> 
   return data;
 }
 
-export default function Home() {
+// `useSearchParams` requires a Suspense boundary at the page level under
+// Next 16's static generation; the inner component holds all the auth +
+// canvas state and the wrapper just provides the boundary.
+export default function HomePage() {
+  return (
+    <Suspense fallback={null}>
+      <Home />
+    </Suspense>
+  );
+}
+
+function Home() {
   const {
     workflows,
     setWorkflows,
