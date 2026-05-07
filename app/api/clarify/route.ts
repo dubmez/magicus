@@ -75,99 +75,114 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ questions: [] as string[] });
   }
 
-  const gemini = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
-  // Three-tier fallback mirrors /api/record-to-workflow: Gemini 2.5 →
-  // Gemini 2.0 → Claude. Both Gemini models share a daily free-tier
-  // quota that's easy to exhaust during testing; Claude runs on a
-  // separate API key + quota so it keeps the feature functional even
-  // when the Google quota is dry.
-  const generateGemini = (model: string) =>
-    withRetry(() =>
-      gemini.models.generateContent({
-        model,
-        config: {
-          systemInstruction: SYSTEM,
-          responseMimeType: "application/json",
-          responseSchema,
-          maxOutputTokens: 300,
-        },
-        contents: description,
-      })
-    );
-
-  // Claude tool-use enforces the same string[] shape as Gemini's
-  // responseSchema, so the parsing path downstream stays identical.
-  const generateClaude = async (): Promise<string> => {
-    if (!process.env.ANTHROPIC_API_KEY) throw new Error("ANTHROPIC_API_KEY missing");
-    const anthropic = new Anthropic();
-    const result = await withRetry(() =>
-      anthropic.messages.create({
-        model: "claude-sonnet-4-6",
-        max_tokens: 300,
-        system: [{ type: "text", text: SYSTEM, cache_control: { type: "ephemeral" } }],
-        tools: [
-          {
-            name: "submit_questions",
-            description: "Submit between 0 and 3 clarifying questions for the workflow description.",
-            input_schema: {
-              type: "object" as const,
-              properties: {
-                questions: {
-                  type: "array",
-                  items: { type: "string" },
-                  maxItems: 3,
-                },
-              },
-              required: ["questions"],
-            },
-          },
-        ],
-        tool_choice: { type: "tool", name: "submit_questions" },
-        messages: [{ role: "user", content: description }],
-      })
-    );
-    const toolUse = result.content.find((b) => b.type === "tool_use");
-    if (!toolUse || toolUse.type !== "tool_use") return "[]";
-    const input = toolUse.input as { questions?: string[] };
-    return JSON.stringify(input.questions ?? []);
-  };
-
-  try {
-    let text: string | undefined;
-    try {
-      text = (await generateGemini("gemini-2.5-flash")).text;
-    } catch (err) {
-      console.warn("[clarify] gemini-2.5-flash failed, falling back to 2.0", err);
-      try {
-        text = (await generateGemini("gemini-2.0-flash")).text;
-      } catch (err2) {
-        console.warn("[clarify] gemini-2.0-flash failed, falling back to Claude", err2);
-        text = await generateClaude();
-      }
-    }
-    if (!text) return NextResponse.json({ questions: [] as string[] });
+  // Pulls a clean string[] out of whatever a model returned. Returns
+  // null when the text isn't recoverable (model wrote prose, malformed
+  // JSON, etc.), which signals the caller to try the next model.
+  const parseQuestions = (text: string | undefined): string[] | null => {
+    if (!text) return null;
     let parsed: unknown;
     try {
       parsed = JSON.parse(text);
     } catch {
-      // Defensive: occasionally a model ignores the responseSchema and
-      // wraps the array in surrounding text ("Here is the JSON: [...]").
-      // Pull out the first JSON array we can find before giving up.
+      // Models sometimes wrap the JSON in prose ("Here is the JSON: [...]")
+      // or quote-escape badly. Try to isolate the first array literal.
       const match = text.match(/\[[\s\S]*\]/);
-      if (match) {
-        try { parsed = JSON.parse(match[0]); } catch { /* fall through */ }
-      }
-      if (parsed === undefined) {
-        console.warn("[clarify] non-JSON response, returning empty:", text.slice(0, 120));
-        return NextResponse.json({ questions: [] as string[] });
-      }
+      if (!match) return null;
+      try { parsed = JSON.parse(match[0]); } catch { return null; }
     }
-    if (!Array.isArray(parsed)) {
-      return NextResponse.json({ questions: [] as string[] });
+    if (!Array.isArray(parsed)) return null;
+    const cleaned = parsed.filter(
+      (q): q is string => typeof q === "string" && q.trim().length > 0
+    );
+    // An empty array is a valid model judgment (description is precise
+    // enough). It's only "unparseable" if we got something that wasn't
+    // actually a string array at all.
+    return cleaned.slice(0, 3);
+  };
+
+  const gemini = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+  // Three-tier chain. Each attempt swallows its own error / empty /
+  // malformed response and returns null — the caller chains them with
+  // `??` so we keep trying until one returns usable questions or all
+  // three give up. 2.0 is primary because 2.5's JSON-mode adherence
+  // has been spotty under load (returning prose preambles or quote-
+  // escape glitches that fail JSON.parse).
+  const tryGemini = async (model: string): Promise<string[] | null> => {
+    try {
+      const response = await withRetry(() =>
+        gemini.models.generateContent({
+          model,
+          config: {
+            systemInstruction: SYSTEM,
+            responseMimeType: "application/json",
+            responseSchema,
+            maxOutputTokens: 500,
+          },
+          contents: description,
+        })
+      );
+      const result = parseQuestions(response.text ?? undefined);
+      if (result === null) {
+        console.warn(`[clarify] ${model} returned unparseable text:`, (response.text ?? "").slice(0, 200));
+      }
+      return result;
+    } catch (err) {
+      console.warn(`[clarify] ${model} threw, falling through:`, err);
+      return null;
     }
-    const questions = parsed
-      .filter((q): q is string => typeof q === "string" && q.trim().length > 0)
-      .slice(0, 3);
+  };
+
+  // Claude tool-use enforces the questions[] shape via its input
+  // schema, so we get clean strings back without JSON-mode quirks.
+  const tryClaude = async (): Promise<string[] | null> => {
+    if (!process.env.ANTHROPIC_API_KEY) return null;
+    try {
+      const anthropic = new Anthropic();
+      const result = await withRetry(() =>
+        anthropic.messages.create({
+          model: "claude-sonnet-4-6",
+          max_tokens: 500,
+          system: [{ type: "text", text: SYSTEM, cache_control: { type: "ephemeral" } }],
+          tools: [
+            {
+              name: "submit_questions",
+              description: "Submit between 0 and 3 clarifying questions for the workflow description.",
+              input_schema: {
+                type: "object" as const,
+                properties: {
+                  questions: {
+                    type: "array",
+                    items: { type: "string" },
+                    maxItems: 3,
+                  },
+                },
+                required: ["questions"],
+              },
+            },
+          ],
+          tool_choice: { type: "tool", name: "submit_questions" },
+          messages: [{ role: "user", content: description }],
+        })
+      );
+      const toolUse = result.content.find((b) => b.type === "tool_use");
+      if (!toolUse || toolUse.type !== "tool_use") return null;
+      const input = toolUse.input as { questions?: unknown };
+      if (!Array.isArray(input.questions)) return null;
+      return input.questions
+        .filter((q): q is string => typeof q === "string" && q.trim().length > 0)
+        .slice(0, 3);
+    } catch (err) {
+      console.warn("[clarify] claude threw:", err);
+      return null;
+    }
+  };
+
+  try {
+    const questions =
+      (await tryGemini("gemini-2.0-flash")) ??
+      (await tryGemini("gemini-2.5-flash")) ??
+      (await tryClaude()) ??
+      [];
     return NextResponse.json({ questions });
   } catch (err) {
     // Hard fall-through: never propagate errors to the user. Skipping
