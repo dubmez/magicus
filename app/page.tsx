@@ -116,6 +116,27 @@ function Home() {
     return () => clearTimeout(t);
   }, [toast]);
 
+  // Pending input handoff — when an unauthed user types a description and
+  // hits "Map it", the auth gate redirects via Google OAuth which unloads
+  // the page. The PromptBox saves the typed text to sessionStorage just
+  // before the gate opens; once we're back with a hydrated session, we
+  // replay handleMap with that text so the user lands on the canvas with
+  // their workflow already generating instead of staring at a blank one.
+  useEffect(() => {
+    if (!hydrated || !user) return;
+    let pending: string | null = null;
+    try {
+      pending = sessionStorage.getItem("magicus_pending_input");
+      if (pending) sessionStorage.removeItem("magicus_pending_input");
+    } catch { /* ignore */ }
+    if (pending && pending.trim().length > 0) {
+      void handleMap(pending);
+    }
+    // Run once on first hydrate-with-user; subsequent state changes
+    // shouldn't re-trigger the replay.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [hydrated, user]);
+
   // Remix handoff — when a user clicks 'Remix this workflow' on a /w/[token]
   // page, that page writes the cloned workflow to localStorage and navigates
   // here. We pick it up on mount, drop it onto the active canvas, select it,

@@ -1,6 +1,7 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { GoogleGenAI, Type } from "@google/genai";
 import { type NextRequest, NextResponse } from "next/server";
+import { withRetry } from "@/lib/retry";
 
 // Provider dispatch — same pattern as /api/automate. Gemini 2.5 Flash is
 // substantially cheaper for this template-shaped output. Set
@@ -14,6 +15,11 @@ function pickProvider(): Provider {
 const SYSTEM = `You convert a user's rough description of a business workflow into a structured workflow card (or chain of cards if appropriate).
 
 The user's description is the source of truth. Do not invent details they did not provide. When in doubt, leave fields empty rather than guessing.
+
+STEP GRANULARITY (most important rule — read first)
+Combine closely related actions that are performed sequentially by the same person in the same context into a single step. A phone call is one step, not three. A form submission is one step, not four. A review meeting is one step. Only create a new step when there is a meaningful change in: who is doing the action, which tool or system is being used, or what the purpose of the action is. Err toward fewer, more meaningful steps rather than many granular ones. A good workflow has 3–7 steps for most tasks.
+
+Do not create steps for administrative housekeeping actions like "open the app", "log in", or "navigate to the page" unless they represent a meaningful decision point or are the primary action of that step.
 
 Rules:
 1. Extract every concrete detail the user mentioned — specific tools, people, frequencies, conditions, triggers — and use them VERBATIM in the generated card. Do not paraphrase, generalise, or substitute generic equivalents.
@@ -255,16 +261,20 @@ const geminiSchema = {
 
 async function generateWithAnthropic(description: string): Promise<GenerateResponse | null> {
   const client = new Anthropic();
-  const response = await client.messages.create({
-    model: "claude-sonnet-4-6",
-    max_tokens: 2000,
-    system: [{ type: "text", text: SYSTEM, cache_control: { type: "ephemeral" } }],
-    tools: [anthropicTool],
-    tool_choice: { type: "tool", name: "generate_workflows" },
-    messages: [
-      { role: "user", content: `User description:\n\n"""${description.trim()}"""` },
-    ],
-  });
+  // Wrapped in withRetry so a transient blip on the first attempt
+  // (cold start, momentary rate limit) doesn't bubble up to the user.
+  const response = await withRetry(() =>
+    client.messages.create({
+      model: "claude-sonnet-4-6",
+      max_tokens: 2000,
+      system: [{ type: "text", text: SYSTEM, cache_control: { type: "ephemeral" } }],
+      tools: [anthropicTool],
+      tool_choice: { type: "tool", name: "generate_workflows" },
+      messages: [
+        { role: "user", content: `User description:\n\n"""${description.trim()}"""` },
+      ],
+    })
+  );
   const toolUse = response.content.find((b) => b.type === "tool_use");
   if (!toolUse || toolUse.type !== "tool_use") return null;
   return toolUse.input as GenerateResponse;
@@ -274,16 +284,18 @@ async function generateWithGemini(description: string): Promise<GenerateResponse
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) throw new Error("GEMINI_API_KEY is not set");
   const client = new GoogleGenAI({ apiKey });
-  const response = await client.models.generateContent({
-    model: "gemini-2.5-flash",
-    config: {
-      systemInstruction: SYSTEM,
-      responseMimeType: "application/json",
-      responseSchema: geminiSchema,
-      maxOutputTokens: 4000,
-    },
-    contents: `User description:\n\n"""${description.trim()}"""`,
-  });
+  const response = await withRetry(() =>
+    client.models.generateContent({
+      model: "gemini-2.5-flash",
+      config: {
+        systemInstruction: SYSTEM,
+        responseMimeType: "application/json",
+        responseSchema: geminiSchema,
+        maxOutputTokens: 4000,
+      },
+      contents: `User description:\n\n"""${description.trim()}"""`,
+    })
+  );
   const text = response.text;
   if (!text) return null;
   try {

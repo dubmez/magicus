@@ -2,6 +2,7 @@ import Anthropic from "@anthropic-ai/sdk";
 import { GoogleGenAI } from "@google/genai";
 import { type NextRequest, NextResponse } from "next/server";
 import type { Workflow, Connection } from "@/lib/workflows";
+import { withRetry } from "@/lib/retry";
 
 // Provider dispatch is server-only and env-driven so we can flip without a
 // code change. Gemini 2.5 Flash is roughly 5× cheaper on output for this
@@ -71,14 +72,16 @@ function buildUserPrompt(
 
 async function generateWithAnthropic(userPrompt: string): Promise<string> {
   const client = new Anthropic();
-  const response = await client.messages.create({
-    model: "claude-sonnet-4-6",
-    max_tokens: MAX_OUTPUT_TOKENS,
-    system: [
-      { type: "text", text: SYSTEM, cache_control: { type: "ephemeral" } },
-    ],
-    messages: [{ role: "user", content: userPrompt }],
-  });
+  const response = await withRetry(() =>
+    client.messages.create({
+      model: "claude-sonnet-4-6",
+      max_tokens: MAX_OUTPUT_TOKENS,
+      system: [
+        { type: "text", text: SYSTEM, cache_control: { type: "ephemeral" } },
+      ],
+      messages: [{ role: "user", content: userPrompt }],
+    })
+  );
   return response.content.find((b) => b.type === "text")?.text ?? "";
 }
 
@@ -86,17 +89,19 @@ async function generateWithGemini(userPrompt: string): Promise<string> {
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) throw new Error("GEMINI_API_KEY is not set");
   const client = new GoogleGenAI({ apiKey });
-  const response = await client.models.generateContent({
-    model: "gemini-2.5-flash",
-    // Gemini's "system" lives inside config.systemInstruction; the user
-    // content is plain text. We don't need structured output here — the
-    // response is markdown the client renders directly.
-    config: {
-      systemInstruction: SYSTEM,
-      maxOutputTokens: MAX_OUTPUT_TOKENS,
-    },
-    contents: userPrompt,
-  });
+  const response = await withRetry(() =>
+    client.models.generateContent({
+      model: "gemini-2.5-flash",
+      // Gemini's "system" lives inside config.systemInstruction; the user
+      // content is plain text. We don't need structured output here — the
+      // response is markdown the client renders directly.
+      config: {
+        systemInstruction: SYSTEM,
+        maxOutputTokens: MAX_OUTPUT_TOKENS,
+      },
+      contents: userPrompt,
+    })
+  );
   return response.text ?? "";
 }
 

@@ -417,9 +417,17 @@ function PromptBox({
 
   const submit = () => {
     if (text.trim().length === 0) return;
-    // The closure captures the current `text`; if the user is unauthed the
-    // gate replays this exact callback after sign-in, so the typed text
-    // survives the round-trip.
+    // For unauthed users the auth gate redirects through Google OAuth,
+    // which unloads this page — the in-memory pendingAction closure is
+    // gone by the time we come back. Stash the text in sessionStorage so
+    // the post-OAuth bootstrap in app/page.tsx can replay generation
+    // automatically. Authed users skip this branch and take the normal
+    // closure path.
+    if (!user) {
+      try {
+        sessionStorage.setItem("magicus_pending_input", text);
+      } catch { /* storage disabled — user will just see empty canvas */ }
+    }
     guard(() => {
       void doSubmit();
     });

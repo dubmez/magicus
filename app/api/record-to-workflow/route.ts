@@ -2,6 +2,7 @@ import { type NextRequest, NextResponse } from "next/server";
 import { GoogleGenAI, createPartFromUri, createUserContent, Type } from "@google/genai";
 import { del, get } from "@vercel/blob";
 import Anthropic from "@anthropic-ai/sdk";
+import { withRetry } from "@/lib/retry";
 
 // Vercel function config: Gemini calls for video can run 15-30s+, so bump the
 // max duration. (Hobby tier ceiling is 60s; we ask for 60.)
@@ -115,6 +116,11 @@ const responseSchema = {
 
 const SYSTEM_PROMPT = `You are watching a screen recording of a business workflow. The user narrated as they worked. Extract a structured workflow object.
 
+STEP GRANULARITY (most important rule — read first)
+Combine closely related actions that are performed sequentially by the same person in the same context into a single step. A phone call is one step, not three. A form submission is one step, not four. A review meeting is one step. Only create a new step when there is a meaningful change in: who is doing the action, which tool or system is being used, or what the purpose of the action is. Err toward fewer, more meaningful steps rather than many granular ones. A good workflow has 3–7 steps for most tasks.
+
+Do not create steps for administrative housekeeping actions like "open the app", "log in", or "navigate to the page" unless they represent a meaningful decision point or are the primary action of that step.
+
 CRITICAL RULES
 - Use only what you observe in the video and hear in the narration. Treat both as equal, complementary signals — neither outranks the other. The video shows what the user actually clicked, opened, and typed; the narration explains the why and the implicit branches. Cross-check between them: if narration mentions a tool the video confirms, lock that detail in. If narration alone implies a step that the video doesn't show, prefer the narration. If only the video shows it, prefer the video. Do not invent steps, tools, or details not present in either source.
 - Leave fields empty (empty strings, empty arrays, null) rather than guessing. It's better to miss a detail than to fabricate one.
@@ -179,24 +185,11 @@ function isQuotaExhausted(err: unknown): boolean {
   );
 }
 
-// Gemini 2.5 Flash returns 503 UNAVAILABLE when the model is overloaded.
-// One automatic retry with a 1.2s backoff catches the common case where the
-// spike clears in seconds.
-async function callWithRetry<T>(call: () => Promise<T>, label: string): Promise<T> {
-  try {
-    return await call();
-  } catch (err) {
-    if (!isOverloaded(err)) throw err;
-    console.warn(`[record-to-workflow] ${label}: 503 — retrying once after 1.2s`);
-    await new Promise((r) => setTimeout(r, 1200));
-    return await call();
-  }
-}
-
-// Tries 2.5 Flash (with retry), then falls back to 2.0 Flash (with retry)
-// when 2.5 keeps overloading. 2.0 Flash supports the same multimodal inputs
-// and responseSchema; it lacks 2.5's thinking tokens so output may be
-// slightly less precise, which is a fine trade for not failing the user.
+// Tries 2.5 Flash (3-attempt retry w/ exp backoff), then falls back to
+// 2.0 Flash (same retry) when 2.5 keeps overloading. 2.0 Flash supports
+// the same multimodal inputs and responseSchema; it lacks 2.5's thinking
+// tokens so output may be slightly less precise, which is a fine trade
+// for not failing the user.
 async function generateWithFallback(
   client: GoogleGenAI,
   contents: ReturnType<typeof createUserContent>
@@ -207,20 +200,17 @@ async function generateWithFallback(
     maxOutputTokens: 8000,
   };
   try {
-    return await callWithRetry(
-      () =>
-        client.models.generateContent({ model: "gemini-2.5-flash", contents, config }),
-      "gemini-2.5-flash"
+    return await withRetry(() =>
+      client.models.generateContent({ model: "gemini-2.5-flash", contents, config })
     );
   } catch (err) {
     if (!isOverloaded(err)) throw err;
     console.warn(
-      "[record-to-workflow] gemini-2.5-flash overloaded after retry — falling back to gemini-2.0-flash"
+      "[record-to-workflow] gemini-2.5-flash overloaded after retries — falling back to gemini-2.0-flash"
     );
-    return await callWithRetry(
+    return await withRetry(
       () =>
-        client.models.generateContent({ model: "gemini-2.0-flash", contents, config }),
-      "gemini-2.0-flash"
+        client.models.generateContent({ model: "gemini-2.0-flash", contents, config })
     );
   }
 }
@@ -338,14 +328,16 @@ async function generateWithClaude(
     },
   ];
 
-  const response = await client.messages.create({
-    model: "claude-sonnet-4-6",
-    max_tokens: 4000,
-    system: [{ type: "text", text: SYSTEM_PROMPT, cache_control: { type: "ephemeral" } }],
-    tools: [anthropicTool],
-    tool_choice: { type: "tool", name: "generate_workflow" },
-    messages: [{ role: "user", content: userContent }],
-  });
+  const response = await withRetry(() =>
+    client.messages.create({
+      model: "claude-sonnet-4-6",
+      max_tokens: 4000,
+      system: [{ type: "text", text: SYSTEM_PROMPT, cache_control: { type: "ephemeral" } }],
+      tools: [anthropicTool],
+      tool_choice: { type: "tool", name: "generate_workflow" },
+      messages: [{ role: "user", content: userContent }],
+    })
+  );
 
   const toolUse = response.content.find((b) => b.type === "tool_use");
   if (!toolUse || toolUse.type !== "tool_use") {
