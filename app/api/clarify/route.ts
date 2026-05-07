@@ -1,5 +1,6 @@
 import { type NextRequest, NextResponse } from "next/server";
 import { GoogleGenAI, Type } from "@google/genai";
+import Anthropic from "@anthropic-ai/sdk";
 import { withRetry } from "@/lib/retry";
 
 // Fast clarification step. Runs between submit and generation: takes the
@@ -74,13 +75,17 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ questions: [] as string[] });
   }
 
-  const client = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
-  // Same model fallback chain as /api/record-to-workflow: 2.5 first
-  // (smarter, but currently flaky), 2.0 as the bench. Either model
-  // returns the same JSON shape so the caller doesn't care which ran.
-  const generate = (model: string) =>
+  const debug = new URL(req.url).searchParams.get("debug") === "1";
+
+  const gemini = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+  // Three-tier fallback mirrors /api/record-to-workflow: Gemini 2.5 →
+  // Gemini 2.0 → Claude. Both Gemini models share a daily free-tier
+  // quota that's easy to exhaust during testing; Claude runs on a
+  // separate API key + quota so it keeps the feature functional even
+  // when the Google quota is dry.
+  const generateGemini = (model: string) =>
     withRetry(() =>
-      client.models.generateContent({
+      gemini.models.generateContent({
         model,
         config: {
           systemInstruction: SYSTEM,
@@ -92,24 +97,56 @@ export async function POST(req: NextRequest) {
       })
     );
 
-  try {
-    let response;
-    try {
-      response = await generate("gemini-2.5-flash");
-    } catch (err) {
-      // 503 / capacity issues on 2.5 right now are common enough that
-      // routinely failing the clarify step would defeat the feature.
-      // 2.0 Flash supports the same responseSchema and runs in parallel
-      // capacity, so a failover keeps us functional.
-      console.warn("[clarify] gemini-2.5-flash failed, falling back to 2.0", err);
-      response = await generate("gemini-2.0-flash");
-    }
+  // Claude tool-use enforces the same string[] shape as Gemini's
+  // responseSchema, so the parsing path downstream stays identical.
+  const generateClaude = async (): Promise<string> => {
+    if (!process.env.ANTHROPIC_API_KEY) throw new Error("ANTHROPIC_API_KEY missing");
+    const anthropic = new Anthropic();
+    const result = await withRetry(() =>
+      anthropic.messages.create({
+        model: "claude-sonnet-4-6",
+        max_tokens: 300,
+        system: [{ type: "text", text: SYSTEM, cache_control: { type: "ephemeral" } }],
+        tools: [
+          {
+            name: "submit_questions",
+            description: "Submit between 0 and 3 clarifying questions for the workflow description.",
+            input_schema: {
+              type: "object" as const,
+              properties: {
+                questions: {
+                  type: "array",
+                  items: { type: "string" },
+                  maxItems: 3,
+                },
+              },
+              required: ["questions"],
+            },
+          },
+        ],
+        tool_choice: { type: "tool", name: "submit_questions" },
+        messages: [{ role: "user", content: description }],
+      })
+    );
+    const toolUse = result.content.find((b) => b.type === "tool_use");
+    if (!toolUse || toolUse.type !== "tool_use") return "[]";
+    const input = toolUse.input as { questions?: string[] };
+    return JSON.stringify(input.questions ?? []);
+  };
 
-    const text = response.text;
-    // Optional debug echo — only when ?debug=1 in the request URL.
-    // Lets us see the raw model output without enabling verbose logging
-    // for every clarify call. Remove once the calibration is settled.
-    const debug = new URL(req.url).searchParams.get("debug") === "1";
+  try {
+    let text: string | undefined;
+    try {
+      text = (await generateGemini("gemini-2.5-flash")).text;
+    } catch (err) {
+      console.warn("[clarify] gemini-2.5-flash failed, falling back to 2.0", err);
+      try {
+        text = (await generateGemini("gemini-2.0-flash")).text;
+      } catch (err2) {
+        console.warn("[clarify] gemini-2.0-flash failed, falling back to Claude", err2);
+        text = await generateClaude();
+      }
+    }
     if (debug) {
       console.info("[clarify] raw response", text);
     }
