@@ -74,11 +74,14 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ questions: [] as string[] });
   }
 
-  try {
-    const client = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
-    const response = await withRetry(() =>
+  const client = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+  // Same model fallback chain as /api/record-to-workflow: 2.5 first
+  // (smarter, but currently flaky), 2.0 as the bench. Either model
+  // returns the same JSON shape so the caller doesn't care which ran.
+  const generate = (model: string) =>
+    withRetry(() =>
       client.models.generateContent({
-        model: "gemini-2.5-flash",
+        model,
         config: {
           systemInstruction: SYSTEM,
           responseMimeType: "application/json",
@@ -88,6 +91,19 @@ export async function POST(req: NextRequest) {
         contents: description,
       })
     );
+
+  try {
+    let response;
+    try {
+      response = await generate("gemini-2.5-flash");
+    } catch (err) {
+      // 503 / capacity issues on 2.5 right now are common enough that
+      // routinely failing the clarify step would defeat the feature.
+      // 2.0 Flash supports the same responseSchema and runs in parallel
+      // capacity, so a failover keeps us functional.
+      console.warn("[clarify] gemini-2.5-flash failed, falling back to 2.0", err);
+      response = await generate("gemini-2.0-flash");
+    }
 
     const text = response.text;
     if (!text) return NextResponse.json({ questions: [] as string[] });
