@@ -75,8 +75,6 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ questions: [] as string[] });
   }
 
-  const debug = new URL(req.url).searchParams.get("debug") === "1";
-
   const gemini = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
   // Three-tier fallback mirrors /api/record-to-workflow: Gemini 2.5 →
   // Gemini 2.0 → Claude. Both Gemini models share a daily free-tier
@@ -147,32 +145,30 @@ export async function POST(req: NextRequest) {
         text = await generateClaude();
       }
     }
-    if (debug) {
-      console.info("[clarify] raw response", text);
-    }
-    if (!text) return NextResponse.json({ questions: [] as string[], ...(debug ? { _raw: null } : {}) });
+    if (!text) return NextResponse.json({ questions: [] as string[] });
     let parsed: unknown;
     try {
       parsed = JSON.parse(text);
     } catch {
-      return NextResponse.json({
-        questions: [] as string[],
-        ...(debug ? { _raw: text, _parseError: true } : {}),
-      });
+      // Defensive: occasionally a model ignores the responseSchema and
+      // wraps the array in surrounding text ("Here is the JSON: [...]").
+      // Pull out the first JSON array we can find before giving up.
+      const match = text.match(/\[[\s\S]*\]/);
+      if (match) {
+        try { parsed = JSON.parse(match[0]); } catch { /* fall through */ }
+      }
+      if (parsed === undefined) {
+        console.warn("[clarify] non-JSON response, returning empty:", text.slice(0, 120));
+        return NextResponse.json({ questions: [] as string[] });
+      }
     }
     if (!Array.isArray(parsed)) {
-      return NextResponse.json({
-        questions: [] as string[],
-        ...(debug ? { _raw: text, _parsed: parsed } : {}),
-      });
+      return NextResponse.json({ questions: [] as string[] });
     }
     const questions = parsed
       .filter((q): q is string => typeof q === "string" && q.trim().length > 0)
       .slice(0, 3);
-    return NextResponse.json({
-      questions,
-      ...(debug ? { _raw: text } : {}),
-    });
+    return NextResponse.json({ questions });
   } catch (err) {
     // Hard fall-through: never propagate errors to the user. Skipping
     // clarification gracefully is better than blocking the flow.
