@@ -145,6 +145,7 @@ export function Canvas({
   onDeleteConnection,
   onCancelConnect,
   onUpdateChainName,
+  onBrowseLibrary,
   focusId,
 }: {
   workflows: Workflow[];
@@ -160,6 +161,10 @@ export function Canvas({
   onDeleteConnection: (fromId: string, toId: string) => void;
   onCancelConnect: () => void;
   onUpdateChainName: (key: string, name: string) => void;
+  // Optional — when supplied, the empty-canvas state offers a link to
+  // browse the Library. Hidden on the Library canvas itself (where
+  // an "empty" state would never make sense).
+  onBrowseLibrary?: () => void;
   focusId?: string | null;
 }) {
   const connections = canvas.connections;
@@ -293,6 +298,11 @@ export function Canvas({
   };
 
   const wfMap = new Map(workflows.map((w) => [w.id, w]));
+  // Empty state shown when an editable canvas has no workflows on it
+  // — pointing users at the two ways into Magicus: type a description,
+  // or adapt one from the Library.
+  const showEmptyState =
+    workflows.length === 0 && !canvas.readOnly && !!onBrowseLibrary;
 
   return (
     <div
@@ -599,6 +609,48 @@ export function Canvas({
               Clear
             </button>
           </span>
+        </div>
+      )}
+
+      {/* Empty-canvas helper — only shows when this canvas is editable
+          and has no workflows on it yet. Two-action prompt: map your
+          first workflow (the user has the top bar's "+" / New for
+          that), or adapt one from the Library. */}
+      {showEmptyState && (
+        <div
+          className="absolute inset-0 flex items-center justify-center pointer-events-none"
+        >
+          <div
+            style={{
+              fontFamily: "var(--font-dm-sans), sans-serif",
+              fontSize: 15,
+              color: "#547863",
+              textAlign: "center",
+              lineHeight: 1.6,
+              maxWidth: 460,
+              padding: "0 24px",
+            }}
+          >
+            <div style={{ marginBottom: 6 }}>
+              Map your first workflow,
+            </div>
+            <button
+              type="button"
+              onClick={() => onBrowseLibrary?.()}
+              className="hover:underline pointer-events-auto"
+              style={{
+                background: "transparent",
+                border: "none",
+                padding: 0,
+                color: "#E66B4D",
+                fontSize: 15,
+                fontFamily: "inherit",
+                cursor: "pointer",
+              }}
+            >
+              or adapt one from the Library →
+            </button>
+          </div>
         </div>
       )}
 

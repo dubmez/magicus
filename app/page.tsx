@@ -740,6 +740,7 @@ function Home() {
               onDeleteConnection={handleDeleteConnection}
               onCancelConnect={() => setConnectMode(null)}
               onUpdateChainName={handleUpdateChainName}
+              onBrowseLibrary={() => setActiveCanvasId(LIBRARY_CANVAS_ID)}
               focusId={focusId}
             />
           </div>
