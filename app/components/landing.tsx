@@ -246,7 +246,7 @@ export function Landing({
       >
         <Sparkles size={14} />
         <span style={{ textTransform: "uppercase", fontWeight: 500 }}>
-          {mode === "fullscreen" ? "Welcome to magicus" : "Map a new workflow"}
+          {mode === "fullscreen" ? "Welcome to magicus" : "New workflow"}
         </span>
       </div>
 
@@ -260,7 +260,7 @@ export function Landing({
           letterSpacing: -0.5,
         }}
       >
-        Describe a workflow and I'll map it.
+        Tell me how you work. I&apos;ll take it from here.
       </h1>
       <p
         style={{
@@ -270,8 +270,7 @@ export function Landing({
           marginBottom: 24,
         }}
       >
-        Tell me what happens, who's involved, and the tools you use. Magicus
-        maps your workflow so you can refine, chain, and automate.
+        A sentence is enough to get started. I&apos;ll ask what I need.
       </p>
 
       {stage === "conversation" || stage === "generating" ? (
@@ -363,7 +362,7 @@ export function Landing({
         <div className="flex items-center gap-3" style={{ fontSize: 12, color: "#90AB8B" }}>
           {stage === "idle" && (
             <>
-              <span>Tip: ⌘/Ctrl + Enter to map</span>
+              <span>Tip: ⌘/Ctrl + Enter to start</span>
               {onRecord && (
                 <>
                   <span style={{ color: "#EBF4DD" }}>·</span>
@@ -392,7 +391,7 @@ export function Landing({
                       fontFamily: "inherit",
                     }}
                   >
-                    Record screen instead
+                    Or record your screen →
                   </button>
                 </>
               )}
@@ -450,7 +449,7 @@ export function Landing({
             }}
           >
             <Send size={14} />
-            Map it
+            Start →
           </button>
         </div>
       </div>
