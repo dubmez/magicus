@@ -128,3 +128,14 @@ body {
 .magicus-skeleton-pulse {
   animation: magicus-skeleton-pulse 1.4s ease-in-out infinite;
 }
+
+/* ─── Chat message appear — fade + slight upward slide. Used by the
+   conversational workflow capture flow as new messages arrive. */
+@keyframes magicus-chat-appear {
+  0%   { opacity: 0; transform: translateY(6px); }
+  100% { opacity: 1; transform: translateY(0); }
+}
+
+.magicus-chat-appear {
+  animation: magicus-chat-appear 200ms ease-out both;
+}

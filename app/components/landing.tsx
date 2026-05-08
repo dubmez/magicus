@@ -5,23 +5,19 @@ import Link from "next/link";
 import { Sparkles, Send, Loader2, X, ArrowRight, Mic, AlertCircle, AlertTriangle } from "lucide-react";
 import { useRequireAuth } from "@/lib/auth-context";
 import { LogoMark } from "./logo";
-import { ClarificationStep } from "./clarification-step";
-import {
-  fetchClarifyQuestions,
-  combineDescriptionWithClarifications,
-  type ClarifyAnswer,
-} from "@/lib/clarify";
+import { ConversationFlow } from "./conversation-flow";
+import type { Workflow } from "@/lib/workflows";
 
 const dmSerif = {
   fontFamily: "var(--font-dm-serif), serif",
   fontStyle: "italic" as const,
 };
 
-// Submission stages mirror the landing-hero PromptBox: a brief
-// `fetchingQuestions` state while we ask the LLM for follow-ups, then
-// `clarifying` if any came back, then `generating` once the user has
-// either answered or skipped.
-type Stage = "idle" | "fetchingQuestions" | "clarifying" | "generating";
+// Submission stages mirror the landing-hero PromptBox: after the user
+// clicks Map it the card hands off to ConversationFlow (path picker →
+// chat → recommendation or generation). `generating` covers the brief
+// window while the parent's onMap resolves.
+type Stage = "idle" | "conversation" | "generating";
 
 type SpeechRecognitionResultLike = {
   isFinal: boolean;
@@ -59,12 +55,23 @@ export function Landing({
   onCancel,
   onSkip,
   onRecord,
+  libraryWorkflows,
+  onAdaptLibrary,
+  onBrowseLibrary,
 }: {
   mode: "fullscreen" | "modal";
-  onMap: (description: string) => void | Promise<void>;
+  // Paths 2/3 generation. Transcript is the full conversation rendered
+  // as plain text. Optional for back-compat with fullscreen-mode call
+  // sites that don't (yet) wire conversational capture.
+  onMap: (description: string, transcript?: string) => void | Promise<void>;
   onCancel?: () => void;
   onSkip?: () => void;
   onRecord?: () => void;
+  libraryWorkflows: Workflow[];
+  // Path-1 outcome handlers — modal callsite wires these to the
+  // canvas's adapt/library navigation.
+  onAdaptLibrary: (libraryId: string) => void;
+  onBrowseLibrary: () => void;
 }) {
   const [stage, setStage] = useState<Stage>("idle");
   const [text, setText] = useState("");
@@ -80,6 +87,23 @@ export function Landing({
 
   useEffect(() => {
     taRef.current?.focus();
+  }, []);
+
+  // Post-OAuth rehydrate: when the user submitted text on the unauthed
+  // landing hero, we stashed it in sessionStorage before the auth gate
+  // redirected to Google. Once back, the page opens this modal — we
+  // rehydrate the text and auto-advance to the conversation stage so
+  // the user lands on the path picker exactly where they would have
+  // been if they'd been signed in already.
+  useEffect(() => {
+    let pending: string | null = null;
+    try {
+      pending = sessionStorage.getItem("magicus_pending_input");
+    } catch { /* storage disabled — fall through with empty text */ }
+    if (!pending || pending.trim().length === 0) return;
+    try { sessionStorage.removeItem("magicus_pending_input"); } catch { /* ignore */ }
+    setText(pending);
+    setStage("conversation");
   }, []);
 
   useEffect(() => {
@@ -163,50 +187,28 @@ export function Landing({
     guard(() => startRecording());
   };
 
-  const [clarifyQuestions, setClarifyQuestions] = useState<string[]>([]);
-
-  const runGeneration = async (finalDescription: string) => {
+  const runGeneration = async (transcript: string) => {
     setStage("generating");
     try {
-      await onMap(finalDescription);
+      await onMap(text, transcript);
     } catch {
       setSubmitError("Couldn't generate a workflow — check your connection and try again.");
-      setStage("idle");
-      setClarifyQuestions([]);
+      setStage("conversation");
     }
   };
 
-  const doSubmit = async () => {
+  const doSubmit = () => {
     if (stage !== "idle" || text.trim().length === 0) return;
     if (isRecording) stopRecording();
     setSubmitError(null);
-
-    // Same clarification flow as landing-hero PromptBox: a quick LLM
-    // round-trip for follow-up questions, then either show them in
-    // place or proceed straight to generation.
-    setStage("fetchingQuestions");
-    const questions = await fetchClarifyQuestions(text);
-    if (questions.length === 0) {
-      await runGeneration(text);
-      return;
-    }
-    setClarifyQuestions(questions);
-    setStage("clarifying");
-  };
-
-  const handleClarifySubmit = async (qa: ClarifyAnswer[]) => {
-    await runGeneration(combineDescriptionWithClarifications(text, qa));
-  };
-
-  const handleClarifySkip = async () => {
-    await runGeneration(text);
+    setStage("conversation");
   };
 
   const submit = () => {
     if (text.trim().length === 0) return;
     // Auth-gate the entire submission. After sign-in the gate replays doSubmit
     // automatically — no lost context.
-    guard(() => { void doSubmit(); });
+    guard(() => { doSubmit(); });
   };
 
   const content = (
@@ -272,12 +274,13 @@ export function Landing({
         maps your workflow so you can refine, chain, and automate.
       </p>
 
-      {stage === "clarifying" ? (
-        <ClarificationStep
-          questions={clarifyQuestions}
-          onSubmit={(qa) => { void handleClarifySubmit(qa); }}
-          onSkip={() => { void handleClarifySkip(); }}
-          busy={stage !== "clarifying"}
+      {stage === "conversation" || stage === "generating" ? (
+        <ConversationFlow
+          description={text}
+          libraryWorkflows={libraryWorkflows}
+          onAdaptLibrary={onAdaptLibrary}
+          onBrowseLibrary={onBrowseLibrary}
+          onGenerate={(transcript) => runGeneration(transcript)}
         />
       ) : (
         <>
@@ -395,10 +398,9 @@ export function Landing({
               )}
             </>
           )}
-          {stage === "generating" && "Mapping into a butterfly…"}
         </div>
         <div className="flex items-center gap-2">
-          {mode === "fullscreen" && stage === "idle" && onSkip && (
+          {mode === "fullscreen" && onSkip && (
             <button
               onClick={onSkip}
               className="flex items-center gap-1 hover:underline"
@@ -434,7 +436,7 @@ export function Landing({
           )}
           <button
             onClick={submit}
-            disabled={stage === "generating" || text.trim().length === 0}
+            disabled={text.trim().length === 0}
             className="flex items-center gap-2 transition-opacity hover:opacity-90"
             style={{
               background: "#3B4953",
@@ -443,25 +445,12 @@ export function Landing({
               borderRadius: 999,
               fontSize: 13,
               fontWeight: 500,
-              opacity:
-                stage === "generating" || text.trim().length === 0 ? 0.5 : 1,
-              cursor:
-                stage === "generating" || text.trim().length === 0
-                  ? "not-allowed"
-                  : "pointer",
+              opacity: text.trim().length === 0 ? 0.5 : 1,
+              cursor: text.trim().length === 0 ? "not-allowed" : "pointer",
             }}
           >
-            {stage === "fetchingQuestions" || stage === "generating" ? (
-              <>
-                <Loader2 size={14} className="animate-spin" />
-                {stage === "generating" ? "Mapping" : ""}
-              </>
-            ) : (
-              <>
-                <Send size={14} />
-                Map it
-              </>
-            )}
+            <Send size={14} />
+            Map it
           </button>
         </div>
       </div>

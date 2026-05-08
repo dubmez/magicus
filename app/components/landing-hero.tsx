@@ -18,12 +18,8 @@ import {
 import { useAuth, useRequireAuth } from "@/lib/auth-context";
 import { AnimatedButterfly } from "./animated-butterfly";
 import { LogoMark } from "./logo";
-import { ClarificationStep } from "./clarification-step";
-import {
-  fetchClarifyQuestions,
-  combineDescriptionWithClarifications,
-  type ClarifyAnswer,
-} from "@/lib/clarify";
+import { ConversationFlow } from "./conversation-flow";
+import type { Workflow } from "@/lib/workflows";
 
 // ─── Palette ──────────────────────────────────────────────────────────────
 // Kept inline rather than in a tokens file because the colours here are
@@ -172,10 +168,14 @@ function HeroSection({
   onMap,
   onBrowseLibrary,
   onRecord,
+  libraryWorkflows,
+  onAdaptLibrary,
 }: {
-  onMap: (description: string) => Promise<void>;
+  onMap: (description: string, transcript?: string) => Promise<void>;
   onBrowseLibrary: () => void;
   onRecord: () => void;
+  libraryWorkflows: Workflow[];
+  onAdaptLibrary: (libraryId: string) => void;
 }) {
   return (
     <section
@@ -248,7 +248,13 @@ function HeroSection({
           should plug in.
         </p>
 
-        <PromptBox onMap={onMap} onRecord={onRecord} />
+        <PromptBox
+          onMap={onMap}
+          onRecord={onRecord}
+          libraryWorkflows={libraryWorkflows}
+          onAdaptLibrary={onAdaptLibrary}
+          onBrowseLibrary={onBrowseLibrary}
+        />
 
         <button
           onClick={onBrowseLibrary}
@@ -273,18 +279,27 @@ function HeroSection({
 
 // ─── Prompt box ────────────────────────────────────────────────────────────
 type Mode = "describe" | "voice" | "record";
-// Submission stages now include `clarifying`: the brief moment between
-// the user submitting their description and the workflow generation
-// kicking off, during which we fetch up to 3 follow-up questions and
-// (if any are returned) collect answers in place inside the same card.
-type Stage = "idle" | "fetchingQuestions" | "clarifying" | "generating";
+// Submission stages: after the user clicks Map it, the same card is
+// taken over by the ConversationFlow component (path picker → chat →
+// recommendation or generation). `generating` is the brief window
+// between the conversation completing and the parent's onMap resolving.
+type Stage = "idle" | "conversation" | "generating";
 
 function PromptBox({
   onMap,
   onRecord,
+  libraryWorkflows,
+  onAdaptLibrary,
+  onBrowseLibrary,
 }: {
-  onMap: (description: string) => Promise<void>;
+  // Paths 2/3 generation. Transcript is the full conversation rendered
+  // as plain text — when omitted we still pass the raw description for
+  // back-compat, but the new flow always supplies it.
+  onMap: (description: string, transcript?: string) => Promise<void>;
   onRecord: () => void;
+  libraryWorkflows: Workflow[];
+  onAdaptLibrary: (libraryId: string) => void;
+  onBrowseLibrary: () => void;
 }) {
   const [text, setText] = useState("");
   // If the user already typed and was sent through the OAuth gate, the
@@ -422,58 +437,26 @@ function PromptBox({
     }
   };
 
-  // Clarification state. We hold the question list separately from the
-  // stage so we can keep showing the questions if generation fails after
-  // the user has already submitted them.
-  const [clarifyQuestions, setClarifyQuestions] = useState<string[]>([]);
-
-  // Fire-and-await the workflow generation with whatever description we
-  // ended up with (raw or augmented with clarifications). Centralised so
-  // both the "skip" path and the "answered" path share error handling.
-  const runGeneration = async (finalDescription: string) => {
+  // Generation runs once the conversation completes (paths 2 / 3).
+  // Path 1 (recommendation) doesn't pass through here — the parent
+  // handles that branch via onAdaptLibrary / onBrowseLibrary.
+  const runGeneration = async (transcript: string) => {
     setStage("generating");
     try {
-      await onMap(finalDescription);
+      await onMap(text, transcript);
     } catch {
       setSubmitError(
         "Couldn't generate a workflow — check your connection and try again.",
       );
-      setStage("idle");
-      setClarifyQuestions([]);
+      setStage("conversation");
     }
   };
 
-  const doSubmit = async () => {
+  const doSubmit = () => {
     if (stage !== "idle" || text.trim().length === 0) return;
     if (isRecording) stopRecording();
     setSubmitError(null);
-
-    // Step 1: ask the LLM for follow-up questions. fetchClarifyQuestions
-    // never throws — it returns [] on any failure, so a flaky clarify
-    // round-trip silently degrades to direct generation.
-    setStage("fetchingQuestions");
-    const questions = await fetchClarifyQuestions(text);
-
-    if (questions.length === 0) {
-      // Nothing to clarify (or call failed) — straight to generation.
-      await runGeneration(text);
-      return;
-    }
-
-    // Step 2: hand off to the in-card clarification UI. Generation runs
-    // when the user submits or skips.
-    setClarifyQuestions(questions);
-    setStage("clarifying");
-  };
-
-  const handleClarifySubmit = async (qa: ClarifyAnswer[]) => {
-    const combined = combineDescriptionWithClarifications(text, qa);
-    await runGeneration(combined);
-  };
-
-  const handleClarifySkip = async () => {
-    // Same generation path as before, with no clarifications appended.
-    await runGeneration(text);
+    setStage("conversation");
   };
 
   const submit = () => {
@@ -481,25 +464,23 @@ function PromptBox({
     // For unauthed users the auth gate redirects through Google OAuth,
     // which unloads this page — the in-memory pendingAction closure is
     // gone by the time we come back. Stash the text in sessionStorage so
-    // the post-OAuth bootstrap in app/page.tsx can replay generation
-    // automatically. Authed users skip this branch and take the normal
-    // closure path.
+    // the post-OAuth bootstrap in app/page.tsx can replay automatically.
+    // Authed users skip this branch and take the normal closure path.
     if (!user) {
       try {
         sessionStorage.setItem("magicus_pending_input", text);
       } catch { /* storage disabled — user will just see empty canvas */ }
     }
     guard(() => {
-      void doSubmit();
+      doSubmit();
     });
   };
 
-  const fetchingQuestions = stage === "fetchingQuestions";
-  const clarifying = stage === "clarifying";
+  const inConversation = stage === "conversation";
   const generating = stage === "generating";
   const submitDisabled =
-    text.trim().length === 0 || generating || fetchingQuestions || clarifying;
-  const showVoiceUI = mode === "voice" && !clarifying;
+    text.trim().length === 0 || generating || inConversation;
+  const showVoiceUI = mode === "voice" && !inConversation && !generating;
 
   return (
     <div
@@ -519,12 +500,13 @@ function PromptBox({
         ...dmSans,
       }}
     >
-      {clarifying ? (
-        <ClarificationStep
-          questions={clarifyQuestions}
-          onSubmit={(qa) => { void handleClarifySubmit(qa); }}
-          onSkip={() => { void handleClarifySkip(); }}
-          busy={generating}
+      {inConversation || generating ? (
+        <ConversationFlow
+          description={text}
+          libraryWorkflows={libraryWorkflows}
+          onAdaptLibrary={onAdaptLibrary}
+          onBrowseLibrary={onBrowseLibrary}
+          onGenerate={(transcript) => runGeneration(transcript)}
         />
       ) : (
         <>
@@ -684,10 +666,10 @@ function PromptBox({
             cursor: submitDisabled ? "not-allowed" : "pointer",
           }}
         >
-          {fetchingQuestions || generating ? (
+          {generating ? (
             <>
               <Loader2 size={14} className="animate-spin" />
-              {generating ? "Mapping" : ""}
+              Mapping
             </>
           ) : (
             <>
@@ -1003,13 +985,19 @@ export function LandingHero({
   onBrowseLibrary,
   onRecord,
   onGoToCanvas,
+  libraryWorkflows,
+  onAdaptLibrary,
 }: {
-  onMap: (description: string) => Promise<void>;
+  onMap: (description: string, transcript?: string) => Promise<void>;
   onBrowseLibrary: () => void;
   onRecord: () => void;
   // Optional: when set, the header CTA flips to "Go to your canvas →"
   // for signed-in users who reached the landing via the escape hatch.
   onGoToCanvas?: () => void;
+  // Library templates the parent has loaded — used by path 1 to pick
+  // the recommended starting workflow once the conversation completes.
+  libraryWorkflows: Workflow[];
+  onAdaptLibrary: (libraryId: string) => void;
 }) {
   return (
     <div className="min-h-screen w-full flex flex-col" style={{ ...dmSans }}>
@@ -1019,6 +1007,8 @@ export function LandingHero({
           onMap={onMap}
           onBrowseLibrary={onBrowseLibrary}
           onRecord={onRecord}
+          libraryWorkflows={libraryWorkflows}
+          onAdaptLibrary={onAdaptLibrary}
         />
       </div>
       <HeroToSageTransition />

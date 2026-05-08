@@ -42,7 +42,22 @@ Rules:
 
    These are ORTHOGONAL — a step can be high-potential AND sensitive (e.g. generating a Stripe invoice from a templated input is rule-based but moves money). Classify each property independently. Be honest. If unsure between high and medium, prefer medium.
 
+   Apply the high/medium/low classification under the lens of "automatable without requiring significant custom engineering" — i.e. doable with no-code/low-code tooling, scripts, or off-the-shelf AI agents. Do not assume any specific platform (Zapier, n8n, or otherwise); judge the work itself.
+
 Return the structured workflow object. Do not include prose outside the structured response.`;
+
+// Appended to SYSTEM when the request carries a conversation transcript.
+// The transcript form makes it more important to extract every detail
+// the user gave — including details that came out across multiple turns.
+const TRANSCRIPT_ADDENDUM = `
+
+CONVERSATION-DERIVED INPUT
+The user's input is a transcript of a Q&A conversation that progressively specified the workflow. Extract every detail across the whole transcript — including edge cases, conditions, tool names, owners, and error handling — and incorporate them into the workflow:
+- Edge cases and decision branches go into step notes (e.g. "If payment fails, retry once — if still failing, flag for human review").
+- Connector / tool details mentioned anywhere in the conversation belong in the tools array AND in the relevant step's text.
+- Ownership statements ("I do this", "the ops team handles…") become step-level owner fields.
+- A step that requires human judgment captured in the conversation gets owner set; a fully tool-driven step leaves owner empty.
+The workflow card is the spec document — make it complete enough that someone could build the automation from it without asking further questions.`;
 
 type GeneratedTrigger =
   | { type: "schedule" | "event" | "manual" | "chained"; description?: string }
@@ -259,19 +274,40 @@ const geminiSchema = {
   required: ["workflows", "connections"],
 };
 
-async function generateWithAnthropic(description: string): Promise<GenerateResponse | null> {
+function buildContent(description: string, transcript?: string): string {
+  if (transcript && transcript.trim().length > 0) {
+    return `Conversation transcript:\n\n"""${transcript.trim()}"""`;
+  }
+  return `User description:\n\n"""${description.trim()}"""`;
+}
+
+function buildSystem(hasTranscript: boolean): string {
+  return hasTranscript ? `${SYSTEM}${TRANSCRIPT_ADDENDUM}` : SYSTEM;
+}
+
+async function generateWithAnthropic(
+  description: string,
+  transcript: string | undefined
+): Promise<GenerateResponse | null> {
   const client = new Anthropic();
+  const hasTranscript = !!(transcript && transcript.trim().length > 0);
   // Wrapped in withRetry so a transient blip on the first attempt
   // (cold start, momentary rate limit) doesn't bubble up to the user.
   const response = await withRetry(() =>
     client.messages.create({
       model: "claude-sonnet-4-6",
       max_tokens: 2000,
-      system: [{ type: "text", text: SYSTEM, cache_control: { type: "ephemeral" } }],
+      system: [
+        {
+          type: "text",
+          text: buildSystem(hasTranscript),
+          cache_control: { type: "ephemeral" },
+        },
+      ],
       tools: [anthropicTool],
       tool_choice: { type: "tool", name: "generate_workflows" },
       messages: [
-        { role: "user", content: `User description:\n\n"""${description.trim()}"""` },
+        { role: "user", content: buildContent(description, transcript) },
       ],
     })
   );
@@ -280,20 +316,24 @@ async function generateWithAnthropic(description: string): Promise<GenerateRespo
   return toolUse.input as GenerateResponse;
 }
 
-async function generateWithGemini(description: string): Promise<GenerateResponse | null> {
+async function generateWithGemini(
+  description: string,
+  transcript: string | undefined
+): Promise<GenerateResponse | null> {
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) throw new Error("GEMINI_API_KEY is not set");
   const client = new GoogleGenAI({ apiKey });
+  const hasTranscript = !!(transcript && transcript.trim().length > 0);
   const response = await withRetry(() =>
     client.models.generateContent({
       model: "gemini-2.5-flash",
       config: {
-        systemInstruction: SYSTEM,
+        systemInstruction: buildSystem(hasTranscript),
         responseMimeType: "application/json",
         responseSchema: geminiSchema,
         maxOutputTokens: 4000,
       },
-      contents: `User description:\n\n"""${description.trim()}"""`,
+      contents: buildContent(description, transcript),
     })
   );
   const text = response.text;
@@ -308,7 +348,10 @@ async function generateWithGemini(description: string): Promise<GenerateResponse
 
 export async function POST(req: NextRequest) {
   try {
-    const { description } = (await req.json()) as { description: string };
+    const { description, transcript } = (await req.json()) as {
+      description: string;
+      transcript?: string;
+    };
     if (!description || description.trim().length === 0) {
       return NextResponse.json({ error: "Empty description" }, { status: 400 });
     }
@@ -316,8 +359,8 @@ export async function POST(req: NextRequest) {
     const provider = pickProvider();
     const data =
       provider === "gemini"
-        ? await generateWithGemini(description)
-        : await generateWithAnthropic(description);
+        ? await generateWithGemini(description, transcript)
+        : await generateWithAnthropic(description, transcript);
 
     if (!data || !Array.isArray(data.workflows) || data.workflows.length === 0) {
       return NextResponse.json(

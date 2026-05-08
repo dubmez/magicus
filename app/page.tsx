@@ -32,11 +32,14 @@ type GeneratedResponse = {
   connections: { from: string; to: string; label?: string }[];
 };
 
-async function generateFromAPI(description: string): Promise<GeneratedResponse> {
+async function generateFromAPI(
+  description: string,
+  transcript?: string
+): Promise<GeneratedResponse> {
   const res = await fetch("/api/generate", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ description }),
+    body: JSON.stringify({ description, transcript }),
   });
   if (!res.ok) throw new Error(`generate failed: ${res.status}`);
   const data = (await res.json()) as GeneratedResponse;
@@ -136,8 +139,9 @@ function Home() {
   // hits "Map it", the auth gate redirects via Google OAuth which unloads
   // the page. The PromptBox saves the typed text to sessionStorage just
   // before the gate opens; once we're back with a hydrated session, we
-  // replay handleMap with that text so the user lands on the canvas with
-  // their workflow already generating instead of staring at a blank one.
+  // open the New Workflow modal which rehydrates the text from
+  // sessionStorage and auto-submits straight into the conversational
+  // path picker.
   useEffect(() => {
     if (!hydrated || !user) return;
     let pending: string | null = null;
@@ -145,18 +149,7 @@ function Home() {
       pending = sessionStorage.getItem("magicus_pending_input");
     } catch { /* ignore */ }
     if (!pending || pending.trim().length === 0) return;
-    // Only clear sessionStorage on success — if handleMap throws (API
-    // timeout, LLM blip) the text stays so the user can retry without
-    // having to re-type the whole prompt.
-    void (async () => {
-      try {
-        await handleMap(pending!);
-        try { sessionStorage.removeItem("magicus_pending_input"); } catch { /* ignore */ }
-      } catch (err) {
-        console.error("[magicus] post-auth replay failed", err);
-        setToast("Couldn't generate from your description. Try again — your text is still saved.");
-      }
-    })();
+    setNewOpen(true);
     // Run once on first hydrate-with-user; subsequent state changes
     // shouldn't re-trigger the replay.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -217,6 +210,13 @@ function Home() {
   const activeWorkflows = useMemo(
     () => workflows.filter((w) => activeCanvas?.workflowIds.includes(w.id)),
     [workflows, activeCanvas]
+  );
+
+  // Seeded library templates — handed to the conversational capture
+  // flow so path 1 can pick a recommendation by category.
+  const libraryWorkflows = useMemo(
+    () => workflows.filter((w) => w.isSeeded),
+    [workflows]
   );
 
   // Which workflow IDs appear in more than one canvas
@@ -514,7 +514,7 @@ function Home() {
     });
   }, [activeCanvas, activeCanvasId, canvases, workflows, guard, setActiveCanvasId, setCanvases, setWorkflows, updateCanvas]);
 
-  const handleMap = async (description: string) => {
+  const handleMap = async (description: string, transcript?: string) => {
     // Never add new workflows to a read-only canvas — switch to the editable one
     let targetCanvas = activeCanvas;
     if (!targetCanvas || targetCanvas.readOnly) {
@@ -531,7 +531,7 @@ function Home() {
 
     // Throws on failure — Landing catches it and shows an inline error.
     // We deliberately do NOT place a fallback card on failure; that hides bugs.
-    const generated = await generateFromAPI(description);
+    const generated = await generateFromAPI(description, transcript);
     const now = Date.now();
 
     // Map LLM-local ids → real ids
@@ -709,6 +709,8 @@ function Home() {
         // Signed-in user viewing the landing via ?welcome=1 — give them a
         // direct path back to their workspace.
         onGoToCanvas={user ? () => router.push("/") : undefined}
+        libraryWorkflows={libraryWorkflows}
+        onAdaptLibrary={handleAdapt}
       />
     );
   }
@@ -784,11 +786,23 @@ function Home() {
       {newOpen && (
         <Landing
           mode="modal"
-          onMap={handleMap}
+          onMap={async (description, transcript) => {
+            await handleMap(description, transcript);
+            setNewOpen(false);
+          }}
           onCancel={() => setNewOpen(false)}
           onRecord={() => {
             setNewOpen(false);
             setRecordingOpen(true);
+          }}
+          libraryWorkflows={libraryWorkflows}
+          onAdaptLibrary={(libraryId) => {
+            handleAdapt(libraryId);
+            setNewOpen(false);
+          }}
+          onBrowseLibrary={() => {
+            setNewOpen(false);
+            setActiveCanvasId(LIBRARY_CANVAS_ID);
           }}
         />
       )}
