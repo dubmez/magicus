@@ -19,6 +19,7 @@ import { useAuth, useRequireAuth } from "@/lib/auth-context";
 import { AnimatedButterfly } from "./animated-butterfly";
 import { LogoMark } from "./logo";
 import { ConversationFlow } from "./conversation-flow";
+import { ExplainerEntryCard } from "./explainer-entry-card";
 import type { Workflow } from "@/lib/workflows";
 
 // ─── Palette ──────────────────────────────────────────────────────────────
@@ -272,6 +273,31 @@ function HeroSection({
           Or browse the workflow library
           <ArrowRight size={13} />
         </button>
+
+        {/* Soft divider then the second entry point. The dark hero
+            background means we use a faint warm divider rather than the
+            sage app-background ones used elsewhere. */}
+        <div
+          style={{
+            width: "min(680px, 100%)",
+            margin: "44px auto 16px",
+            display: "flex",
+            alignItems: "center",
+            gap: 14,
+            color: HERO_INK_DIM,
+            fontSize: 12,
+            letterSpacing: "0.1em",
+            textTransform: "uppercase",
+            fontWeight: 500,
+            opacity: 0.85,
+          }}
+        >
+          <span style={{ flex: 1, height: 1, background: "rgba(168, 189, 184, 0.25)" }} />
+          Already built something?
+          <span style={{ flex: 1, height: 1, background: "rgba(168, 189, 184, 0.25)" }} />
+        </div>
+
+        <ExplainerEntryCard />
       </div>
     </section>
   );

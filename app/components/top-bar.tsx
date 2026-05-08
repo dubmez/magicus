@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { Plus, Zap, LogOut } from "lucide-react";
+import { Plus, Zap, LogOut, Share2 } from "lucide-react";
 import { useAuth } from "@/lib/auth-context";
 import { LogoMark } from "./logo";
 
@@ -124,10 +124,15 @@ function UserMenu() {
 
 export function TopBar({
   onNew,
+  onShareBuilt,
   onAutomate,
   automateCount,
 }: {
   onNew: () => void;
+  // Optional: when set, renders the secondary "Share what you've built"
+  // entry alongside "New workflow". Keeps this prop optional so any
+  // callers that don't pass it still work.
+  onShareBuilt?: () => void;
   onAutomate: () => void;
   automateCount: number;
 }) {
@@ -185,6 +190,28 @@ export function TopBar({
           <Plus size={14} />
           <span className="hidden md:inline">New workflow</span>
         </button>
+        {onShareBuilt && (
+          <button
+            onClick={onShareBuilt}
+            className="flex items-center gap-2 transition-colors hover:bg-[#EBF4DD]"
+            style={{
+              background: "transparent",
+              color: "#547863",
+              padding: "8px 12px",
+              borderRadius: 999,
+              fontSize: 13,
+              fontWeight: 500,
+              border: "1px solid transparent",
+              whiteSpace: "nowrap",
+              flexShrink: 0,
+            }}
+            title="Share what you've built"
+            aria-label="Share what you've built"
+          >
+            <Share2 size={14} />
+            <span className="hidden lg:inline">Share what you&apos;ve built</span>
+          </button>
+        )}
       </div>
 
       <div className="flex items-center gap-1.5 md:gap-2">

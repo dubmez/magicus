@@ -1294,10 +1294,19 @@ function ErrorScreen({
 // ─── RecordingFlow main ────────────────────────────────────────────────────
 
 export function RecordingFlow({
+  mode = "workflow",
   onSuccess,
+  onExplainerSuccess,
   onCancel,
 }: {
-  onSuccess: (workflow: RecordedWorkflow) => void;
+  // "workflow" = original flow → /api/record-to-workflow → onSuccess(workflow).
+  // "explainer" = lightweight transcript-only flow → /api/explainer/generate
+  //               → onExplainerSuccess({ id, token }). Skips chunk upload and
+  //               frame extraction; the explainer pipeline only needs the
+  //               narration in Phase 1.
+  mode?: "workflow" | "explainer";
+  onSuccess?: (workflow: RecordedWorkflow) => void;
+  onExplainerSuccess?: (result: { id: string; token: string }) => void;
   onCancel: () => void;
 }) {
   const [stage, setStage] = useState<Stage>("prep");
@@ -1380,6 +1389,48 @@ export function RecordingFlow({
       qa.length > 0
         ? combineDescriptionWithClarifications(reviewTranscript, qa)
         : reviewTranscript;
+
+    // Explainer mode short-circuit: transcript-only call to the
+    // explainer pipeline, no chunk upload, no fallback frames.
+    if (mode === "explainer") {
+      try {
+        const res = await fetch("/api/explainer/generate", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ transcript: augmentedTranscript }),
+        });
+        if (!res.ok) {
+          let serverReason = `${res.status} ${res.statusText}`.trim();
+          try {
+            const text = await res.text();
+            if (text) {
+              try {
+                const j = JSON.parse(text) as { error?: string };
+                if (j.error) serverReason = `${res.status} — ${j.error}`;
+              } catch {
+                serverReason = `${res.status} — ${text.slice(0, 200)}`;
+              }
+            }
+          } catch { /* fall through */ }
+          failTo(`Server: ${serverReason}`);
+          return;
+        }
+        const data = (await res.json()) as {
+          id?: string;
+          token?: string;
+          error?: string;
+        };
+        if (!data.id || !data.token) {
+          failTo(`Server returned no explainer${data.error ? `: ${data.error}` : ""}.`);
+          return;
+        }
+        onExplainerSuccess?.({ id: data.id, token: data.token });
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        failTo(`Network error: ${msg}`);
+      }
+      return;
+    }
 
     try {
       console.info(
@@ -1494,12 +1545,12 @@ export function RecordingFlow({
           return shot ? { ...step, screenshot: shot } : step;
         })
       );
-      onSuccess({ ...data.workflow, steps: enrichedSteps });
+      onSuccess?.({ ...data.workflow, steps: enrichedSteps });
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       failTo(`Network error: ${msg}`);
     }
-  }, [reviewBlob, reviewDuration, reviewTranscript, reviewMime, onSuccess, failTo]);
+  }, [reviewBlob, reviewDuration, reviewTranscript, reviewMime, mode, onSuccess, onExplainerSuccess, failTo]);
 
   // Entry point from the review screen. Decides whether to surface the
   // clarification step (short recordings / sparse transcripts) or jump

@@ -142,13 +142,25 @@ function Home() {
   // open the New Workflow modal which rehydrates the text from
   // sessionStorage and auto-submits straight into the conversational
   // path picker.
+  //
+  // Same pattern for the Explainer entry point: clicking "Share what
+  // you've built" while unauthed sets `magicus_pending_explainer`. We
+  // consume it here and bounce to /explainer/new.
   useEffect(() => {
     if (!hydrated || !user) return;
-    let pending: string | null = null;
+    let pendingExplainer = false;
+    let pendingInput: string | null = null;
     try {
-      pending = sessionStorage.getItem("magicus_pending_input");
+      pendingExplainer =
+        sessionStorage.getItem("magicus_pending_explainer") === "1";
+      pendingInput = sessionStorage.getItem("magicus_pending_input");
     } catch { /* ignore */ }
-    if (!pending || pending.trim().length === 0) return;
+    if (pendingExplainer) {
+      try { sessionStorage.removeItem("magicus_pending_explainer"); } catch { /* ignore */ }
+      router.push("/explainer/new");
+      return;
+    }
+    if (!pendingInput || pendingInput.trim().length === 0) return;
     setNewOpen(true);
     // Run once on first hydrate-with-user; subsequent state changes
     // shouldn't re-trigger the replay.
@@ -722,6 +734,7 @@ function Home() {
     >
       <TopBar
         onNew={() => setNewOpen(true)}
+        onShareBuilt={() => router.push("/explainer/new")}
         onAutomate={() => setAutomateOpen(true)}
         automateCount={automateWorkflows.length}
       />
