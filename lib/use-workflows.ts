@@ -110,10 +110,20 @@ export function useWorkflows() {
 
   // Revalidation + first-load migration. Runs once auth state has settled
   // on the Supabase backend; for the local backend it's a no-op.
+  //
+  // CRITICAL: deps key on `user?.id`, NOT the user object itself. Supabase
+  // fires onAuthStateChange repeatedly during a session (INITIAL_SESSION,
+  // TOKEN_REFRESHED, USER_UPDATED) — each event constructs a fresh
+  // AuthUser via supabaseUserToAuthUser, so the object reference changes
+  // even when the underlying user identity hasn't. Depending on the
+  // reference would re-run revalidation mid-session, racing against an
+  // in-flight save and overwriting freshly-generated workflows with the
+  // stale-on-the-server view.
+  const userId = user?.id ?? null;
   useEffect(() => {
     if (storageBackend === "local") return;
     if (!authHydrated) return;
-    if (!user) {
+    if (!userId) {
       // Signed-out user. Render the cached/seeded view; persistence stays
       // disabled because writes would fail authz anyway.
       setRevalidated(true);
@@ -134,20 +144,20 @@ export function useWorkflows() {
           // start from scratch.
           const localWfs = readWorkflowsSync();
           const localCanvases = readCanvasesSync();
-          const userWfs = localWfs.filter((w) => !SEED_WORKFLOW_IDS.has(w.id));
-          const userCanvases = localCanvases.filter((c) => !c.readOnly);
+          const localUserWfs = localWfs.filter((w) => !SEED_WORKFLOW_IDS.has(w.id));
+          const localUserCanvases = localCanvases.filter((c) => !c.readOnly);
 
-          if (userWfs.length > 0 || userCanvases.length > 0) {
+          if (localUserWfs.length > 0 || localUserCanvases.length > 0) {
             console.info(
-              `[magicus] migrating ${userWfs.length} workflows + ${userCanvases.length} canvases to Supabase`
+              `[magicus] migrating ${localUserWfs.length} workflows + ${localUserCanvases.length} canvases to Supabase`
             );
             await Promise.all([
-              storage.saveWorkflows(userWfs),
-              storage.saveCanvases(userCanvases),
+              storage.saveWorkflows(localUserWfs),
+              storage.saveCanvases(localUserCanvases),
             ]);
             if (cancelled) return;
-            setWorkflows(mergeWithSeedWorkflows(userWfs));
-            setCanvases(withLibraryCanvas(userCanvases));
+            setWorkflows(mergeWithSeedWorkflows(localUserWfs));
+            setCanvases(withLibraryCanvas(localUserCanvases));
           } else {
             // Truly fresh user — give them the default empty My Workflows
             // canvas alongside the Library.
@@ -168,29 +178,36 @@ export function useWorkflows() {
     })();
 
     return () => { cancelled = true; };
-  }, [user, authHydrated]);
+  }, [userId, authHydrated]);
 
   // Persist on change. Gated on `revalidated` so we don't stomp Supabase
-  // with stale cache, and (for Supabase) on `user` so signed-out writes
-  // don't error in the storage layer's authz check.
+  // with stale cache, and (for Supabase) on `userId` so signed-out writes
+  // don't error in the storage layer's authz check. Same `user?.id` over
+  // `user` rule as the revalidation effect — see the note above.
   useEffect(() => {
     if (!revalidated) return;
-    if (storageBackend === "supabase" && !user) return;
+    if (storageBackend === "supabase" && !userId) return;
     if (storageBackend === "supabase") {
       // Strip seeds — those are reconstructed client-side and not user data.
       const userWfs = workflows.filter((w) => !SEED_WORKFLOW_IDS.has(w.id));
-      void storage.saveWorkflows(userWfs);
+      storage.saveWorkflows(userWfs).catch((err) => {
+        console.error("[magicus] saveWorkflows failed", err);
+      });
     } else {
-      void storage.saveWorkflows(workflows);
+      storage.saveWorkflows(workflows).catch((err) => {
+        console.error("[magicus] saveWorkflows failed", err);
+      });
     }
-  }, [workflows, revalidated, user]);
+  }, [workflows, revalidated, userId]);
 
   useEffect(() => {
     if (!revalidated) return;
-    if (storageBackend === "supabase" && !user) return;
+    if (storageBackend === "supabase" && !userId) return;
     // Examples canvas is filtered out by the storage impl (read_only).
-    void storage.saveCanvases(canvases);
-  }, [canvases, revalidated, user]);
+    storage.saveCanvases(canvases).catch((err) => {
+      console.error("[magicus] saveCanvases failed", err);
+    });
+  }, [canvases, revalidated, userId]);
 
   useEffect(() => {
     if (!revalidated) return;
