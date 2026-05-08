@@ -1,14 +1,15 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { X, Zap, ChevronDown, Loader2, Copy, Check, RefreshCw } from "lucide-react";
+import { X, Zap, ChevronDown, Loader2, Copy, Check, RefreshCw, ExternalLink } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import type { Components } from "react-markdown";
 import type { Workflow, Connection } from "@/lib/workflows";
 
 type PlatformState = "idle" | "loading" | "done" | "error";
-type ViewMode = "read" | "markdown";
+type N8nTab = "read" | "ai-builder";
+type AiBuilderState = "idle" | "loading" | "done" | "error";
 
 const dmSerif = { fontFamily: "var(--font-dm-serif), serif", fontStyle: "italic" as const };
 
@@ -108,6 +109,42 @@ const mdComponents: Components = {
   ),
 };
 
+// Reusable copy button — same look used in the section toolbar and inside
+// the AI-builder text box.
+function CopyButton({ getText }: { getText: () => string }) {
+  const [copied, setCopied] = useState(false);
+  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const handle = async () => {
+    try {
+      await navigator.clipboard.writeText(getText());
+      setCopied(true);
+      if (timer.current) clearTimeout(timer.current);
+      timer.current = setTimeout(() => setCopied(false), 1500);
+    } catch {
+      /* clipboard refused — fall through silently */
+    }
+  };
+  useEffect(() => () => { if (timer.current) clearTimeout(timer.current); }, []);
+  return (
+    <button
+      onClick={handle}
+      className="flex items-center gap-1.5 transition-colors hover:bg-[#EBF4DD]"
+      style={{
+        padding: "5px 10px",
+        borderRadius: 999,
+        fontSize: 11,
+        color: "#547863",
+        background: copied ? "#EBF4DD" : "transparent",
+        fontWeight: 500,
+      }}
+      aria-label="Copy"
+    >
+      {copied ? <Check size={12} /> : <Copy size={12} />}
+      {copied ? "Copied" : "Copy"}
+    </button>
+  );
+}
+
 function PlatformSection({
   label,
   icon,
@@ -124,11 +161,11 @@ function PlatformSection({
   const [open, setOpen] = useState(false);
   const [state, setState] = useState<PlatformState>("idle");
   const [instructions, setInstructions] = useState("");
-  const [mode, setMode] = useState<ViewMode>("read");
-  const [copied, setCopied] = useState(false);
+  const [tab, setTab] = useState<N8nTab>("read");
+  const [aiState, setAiState] = useState<AiBuilderState>("idle");
+  const [aiPrompt, setAiPrompt] = useState("");
   const readRef = useRef<HTMLDivElement>(null);
   const headerRef = useRef<HTMLButtonElement>(null);
-  const copyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const fetchInstructions = async () => {
     setState("loading");
@@ -147,6 +184,23 @@ function PlatformSection({
     }
   };
 
+  const fetchAiBuilder = async () => {
+    setAiState("loading");
+    try {
+      const res = await fetch("/api/automate/ai-builder", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ workflows, connections }),
+      });
+      const data = await res.json();
+      if (!res.ok || data.error) throw new Error(data.error ?? "Request failed");
+      setAiPrompt(data.prompt);
+      setAiState("done");
+    } catch {
+      setAiState("error");
+    }
+  };
+
   const toggle = async () => {
     if (open) { setOpen(false); return; }
     setOpen(true);
@@ -159,6 +213,20 @@ function PlatformSection({
     await fetchInstructions();
   };
 
+  const retryAi = async () => {
+    setAiState("idle");
+    await fetchAiBuilder();
+  };
+
+  // Lazy-load the AI-builder prompt the first time the user clicks the
+  // tab. Subsequent clicks just toggle visibility.
+  const handleSelectTab = (next: N8nTab) => {
+    setTab(next);
+    if (next === "ai-builder" && aiState === "idle") {
+      void fetchAiBuilder();
+    }
+  };
+
   // When content finishes loading, scroll the section header into view
   // so the user sees the title first instead of mid-document.
   useEffect(() => {
@@ -167,20 +235,13 @@ function PlatformSection({
     }
   }, [state]);
 
-  const handleCopy = async () => {
-    const text =
-      mode === "markdown"
-        ? instructions
-        : (readRef.current?.innerText ?? instructions);
-    try {
-      await navigator.clipboard.writeText(text);
-      setCopied(true);
-      if (copyTimerRef.current) clearTimeout(copyTimerRef.current);
-      copyTimerRef.current = setTimeout(() => setCopied(false), 1500);
-    } catch {
-      // Clipboard refused — fall through silently
-    }
-  };
+  const showTabs = platform === "n8n";
+  const showingAiBuilder = showTabs && tab === "ai-builder";
+
+  // What the section's main copy button copies. The AI-builder tab has
+  // its own copy button inside the text box, so the toolbar copy is
+  // hidden when that tab is active.
+  const copyVisibleRead = () => readRef.current?.innerText ?? instructions;
 
   return (
     <div style={{ border: "1px solid #EBF4DD", borderRadius: 12, overflow: "hidden", flexShrink: 0 }}>
@@ -255,98 +316,190 @@ function PlatformSection({
           )}
           {state === "done" && (
             <>
-              {/* Toggle + Copy row */}
+              {/* Tab + Copy toolbar. Zapier has no tab toggle; n8n shows
+                  Read / AI Builder pills. */}
               <div
                 className="flex items-center justify-between"
                 style={{
                   padding: "10px 14px",
                   borderBottom: "1px solid #EBF4DD",
+                  minHeight: 44,
                 }}
               >
-                <div
-                  className="flex"
-                  style={{
-                    background: "#FFFFFF",
-                    border: "1px solid #EBF4DD",
-                    borderRadius: 999,
-                    padding: 3,
-                  }}
-                >
-                  {([
-                    { mode: "read" as const, label: "Formatted" },
-                    { mode: "markdown" as const, label: "Raw text" },
-                  ]).map(({ mode: m, label }) => {
-                    const active = mode === m;
-                    return (
-                      <button
-                        key={m}
-                        onClick={() => setMode(m)}
-                        style={{
-                          padding: "4px 12px",
-                          borderRadius: 999,
-                          fontSize: 11,
-                          fontWeight: active ? 500 : 400,
-                          background: active ? "#3B4953" : "transparent",
-                          color: active ? "#EBF4DD" : "#547863",
-                          transition: "background 0.12s, color 0.12s",
-                        }}
-                      >
-                        {label}
-                      </button>
-                    );
-                  })}
-                </div>
-                <button
-                  onClick={handleCopy}
-                  className="flex items-center gap-1.5 transition-colors hover:bg-[#EBF4DD]"
-                  style={{
-                    padding: "5px 10px",
-                    borderRadius: 999,
-                    fontSize: 11,
-                    color: copied ? "#547863" : "#547863",
-                    background: copied ? "#EBF4DD" : "transparent",
-                    fontWeight: 500,
-                  }}
-                  aria-label="Copy"
-                >
-                  {copied ? <Check size={12} /> : <Copy size={12} />}
-                  {copied ? "Copied" : "Copy"}
-                </button>
+                {showTabs ? (
+                  <div
+                    className="flex"
+                    style={{
+                      background: "#FFFFFF",
+                      border: "1px solid #EBF4DD",
+                      borderRadius: 999,
+                      padding: 3,
+                    }}
+                  >
+                    {([
+                      { key: "read" as const, label: "Read" },
+                      { key: "ai-builder" as const, label: "AI Builder" },
+                    ]).map(({ key, label }) => {
+                      const active = tab === key;
+                      return (
+                        <button
+                          key={key}
+                          onClick={() => handleSelectTab(key)}
+                          style={{
+                            padding: "4px 12px",
+                            borderRadius: 999,
+                            fontSize: 11,
+                            fontWeight: active ? 500 : 400,
+                            background: active ? "#3B4953" : "transparent",
+                            color: active ? "#EBF4DD" : "#547863",
+                            transition: "background 0.12s, color 0.12s",
+                          }}
+                        >
+                          {label}
+                        </button>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <span />
+                )}
+                {!showingAiBuilder && <CopyButton getText={copyVisibleRead} />}
               </div>
 
               {/* Content */}
               <div style={{ padding: "16px 20px" }}>
-                {mode === "read" ? (
+                {showingAiBuilder ? (
+                  <AiBuilderPanel
+                    state={aiState}
+                    prompt={aiPrompt}
+                    onRetry={retryAi}
+                  />
+                ) : (
                   <div ref={readRef}>
                     <ReactMarkdown components={mdComponents} remarkPlugins={[remarkGfm]}>
                       {instructions}
                     </ReactMarkdown>
                   </div>
-                ) : (
-                  <pre
-                    style={{
-                      background: "#FFFFFF",
-                      border: "1px solid #EBF4DD",
-                      borderRadius: 8,
-                      padding: "12px 14px",
-                      fontSize: 12,
-                      lineHeight: 1.55,
-                      color: "#3B4953",
-                      whiteSpace: "pre-wrap",
-                      wordBreak: "break-word",
-                      margin: 0,
-                      fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
-                      overflowX: "auto",
-                    }}
-                  >
-                    {instructions}
-                  </pre>
                 )}
               </div>
             </>
           )}
         </div>
       )}
+    </div>
+  );
+}
+
+function AiBuilderPanel({
+  state,
+  prompt,
+  onRetry,
+}: {
+  state: AiBuilderState;
+  prompt: string;
+  onRetry: () => void;
+}) {
+  // Skeleton while the Gemini call is in flight. Same amber tint as the
+  // mic pulse — see globals.css `magicus-skeleton-pulse`.
+  if (state === "loading" || state === "idle") {
+    return (
+      <div
+        className="magicus-skeleton-pulse"
+        style={{
+          border: "1px solid #EBF4DD",
+          borderRadius: 10,
+          height: 220,
+        }}
+        aria-busy="true"
+        aria-label="Generating AI builder prompt"
+      />
+    );
+  }
+
+  if (state === "error") {
+    return (
+      <div
+        style={{
+          background: "#FFFFFF",
+          border: "1px solid #EBF4DD",
+          borderRadius: 10,
+          padding: 16,
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          gap: 12,
+        }}
+      >
+        <span style={{ fontSize: 13, color: "#C0392B" }}>
+          Couldn&apos;t generate the prompt — try again.
+        </span>
+        <button
+          onClick={onRetry}
+          className="flex items-center gap-1.5 transition-colors hover:bg-[#EBF4DD]"
+          style={{
+            padding: "6px 12px",
+            borderRadius: 999,
+            fontSize: 12,
+            fontWeight: 500,
+            color: "#3B4953",
+            background: "#FFFFFF",
+            border: "1px solid #EBF4DD",
+            flexShrink: 0,
+          }}
+        >
+          <RefreshCw size={12} />
+          Try again
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <div>
+      <div
+        style={{
+          position: "relative",
+          background: "#FFFFFF",
+          border: "1px solid #EBF4DD",
+          borderRadius: 10,
+          padding: 16,
+          paddingRight: 80,
+        }}
+      >
+        <div style={{ position: "absolute", top: 8, right: 8 }}>
+          <CopyButton getText={() => prompt} />
+        </div>
+        <div
+          style={{
+            fontFamily: "var(--font-dm-sans), sans-serif",
+            fontSize: 14,
+            color: "#3B4953",
+            lineHeight: 1.6,
+            whiteSpace: "pre-wrap",
+            wordBreak: "break-word",
+          }}
+        >
+          {prompt}
+        </div>
+      </div>
+      <div
+        className="flex items-center gap-2"
+        style={{ marginTop: 10, fontSize: 12, color: "#90AB8B" }}
+      >
+        <span>
+          Paste this into n8n&apos;s &lsquo;Build with AI&rsquo; input box to generate your workflow automatically.
+        </span>
+        <a
+          href="https://app.n8n.cloud"
+          target="_blank"
+          rel="noreferrer"
+          className="flex items-center gap-1 hover:underline"
+          style={{ color: "#547863", flexShrink: 0 }}
+        >
+          Open n8n
+          <ExternalLink size={11} />
+        </a>
+      </div>
     </div>
   );
 }
