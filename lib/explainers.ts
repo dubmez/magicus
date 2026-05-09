@@ -144,6 +144,22 @@ export async function getExplainerByToken(
   return data ? rowToExplainer(data) : null;
 }
 
+// Powers the /explainer hub. RLS already scopes the SELECT to the
+// caller's own rows; the explicit user_id filter is just for clarity
+// and so this still does the right thing if the policy ever loosens.
+export async function loadUserExplainers(
+  client: SupabaseClient,
+  userId: string
+): Promise<Explainer[]> {
+  const { data, error } = await client
+    .from("explainers")
+    .select(COLUMNS)
+    .eq("user_id", userId)
+    .order("updated_at", { ascending: false });
+  if (error) throw error;
+  return (data ?? []).map(rowToExplainer);
+}
+
 // ─── Writes ───────────────────────────────────────────────────────────────
 
 export type ExplainerDraftInput = {

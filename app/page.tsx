@@ -170,7 +170,10 @@ function Home() {
     } catch { /* ignore */ }
     if (pendingExplainer) {
       try { sessionStorage.removeItem("magicus_pending_explainer"); } catch { /* ignore */ }
-      router.push("/explainer/new");
+      // Land on the hub so returning users see their existing
+      // explainers; first-timers see the empty-state CTA pointing
+      // straight at /explainer/new from there.
+      router.push("/explainer");
       return;
     }
     if (!pendingInput || pendingInput.trim().length === 0) return;
@@ -737,12 +740,12 @@ function Home() {
         onShareExplainer={() => {
           // Auth-gate the click. Unauthed users get the OAuth bounce;
           // the magicus_pending_explainer flag survives the redirect
-          // and is consumed by the replay useEffect above, which then
-          // routes here to /explainer/new.
+          // and is consumed by the replay useEffect above, which
+          // routes them to /explainer (the hub).
           if (!user) {
             try { sessionStorage.setItem("magicus_pending_explainer", "1"); } catch { /* ignore */ }
           }
-          guard(() => router.push("/explainer/new"));
+          guard(() => router.push("/explainer"));
         }}
         libraryWorkflows={libraryWorkflows}
         onAdaptLibrary={handleAdapt}
@@ -757,7 +760,7 @@ function Home() {
     >
       <TopBar
         onNew={() => setNewOpen(true)}
-        onShareBuilt={() => router.push("/explainer/new")}
+        onShareBuilt={() => router.push("/explainer")}
         onAutomate={() => setAutomateOpen(true)}
         automateCount={automateWorkflows.length}
       />

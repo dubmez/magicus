@@ -114,6 +114,19 @@ export default async function ExplainerPublishedPage({ params }: Props) {
             </Link>
             <span style={{ color: CARD_BORDER }}>·</span>
             <Link
+              href="/explainer"
+              className="hover:underline"
+              style={{
+                color: SAGE,
+                fontSize: 13,
+                fontWeight: 500,
+                textDecoration: "none",
+              }}
+            >
+              All your explainers →
+            </Link>
+            <span style={{ color: CARD_BORDER }}>·</span>
+            <Link
               href="/"
               className="hover:underline"
               style={{
