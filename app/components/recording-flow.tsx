@@ -1295,6 +1295,7 @@ function ErrorScreen({
 
 export function RecordingFlow({
   mode = "workflow",
+  autoStart = false,
   onSuccess,
   onExplainerSuccess,
   onCancel,
@@ -1305,6 +1306,11 @@ export function RecordingFlow({
   //               frame extraction; the explainer pipeline only needs the
   //               narration in Phase 1.
   mode?: "workflow" | "explainer";
+  // When true, fire the browser screen-capture permission prompt on
+  // mount instead of rendering the in-app prep screen. Used by
+  // /explainer/new — that page already serves as the prep, so the
+  // built-in PrepScreen would be a redundant second instructions page.
+  autoStart?: boolean;
   onSuccess?: (workflow: RecordedWorkflow) => void;
   onExplainerSuccess?: (result: { id: string; token: string }) => void;
   onCancel: () => void;
@@ -1369,6 +1375,18 @@ export function RecordingFlow({
     setReviewDuration(0);
     setStage("prep");
   }, []);
+
+  // autoStart: skip the in-app prep screen and trigger the browser's
+  // screen-capture permission prompt directly on mount. Guarded so a
+  // second invocation (StrictMode / re-render) doesn't fire a second
+  // getDisplayMedia call.
+  const autoStartFiredRef = useRef(false);
+  useEffect(() => {
+    if (!autoStart) return;
+    if (autoStartFiredRef.current) return;
+    autoStartFiredRef.current = true;
+    void handleStart();
+  }, [autoStart, handleStart]);
 
   // Clarification questions to display before kicking off processing
   // for short recordings. Empty when none should be shown.
@@ -1601,6 +1619,11 @@ export function RecordingFlow({
   }, [recorder, onCancel]);
 
   if (stage === "prep") {
+    // autoStart bypasses the in-app prep screen entirely while we wait
+    // for the browser's permission prompt. If the user denies access,
+    // prepError gets set and we fall back to the prep screen so they
+    // can read the explanation and retry.
+    if (autoStart && !prepError) return null;
     return <PrepScreen onStart={handleStart} onCancel={handleCancel} errorMsg={prepError} />;
   }
   if (stage === "recording") {

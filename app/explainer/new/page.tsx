@@ -40,7 +40,11 @@ export default function ExplainerNewPage() {
   };
 
   const switchToText = () => {
-    router.push("/");
+    // Authed users on /explainer/new clicking "describe in text instead"
+    // expect to land in the conversational build flow, not on the bare
+    // canvas. ?new=1 is consumed in app/page.tsx and opens the New
+    // Workflow modal on mount, mirroring the ?library=1 pattern.
+    router.push("/?new=1");
   };
 
   // Recording mounted: hand the whole viewport over to the existing
@@ -49,6 +53,7 @@ export default function ExplainerNewPage() {
     return (
       <RecordingFlow
         mode="explainer"
+        autoStart
         onExplainerSuccess={({ id }) => {
           router.push(`/explainer/draft/${id}`);
         }}

@@ -88,6 +88,11 @@ function Home() {
   const libraryParam =
     searchParams?.get("library") === "1" ||
     searchParams?.get("examples") === "1";
+  // ?new=1 opens the New Workflow modal on mount. Set by
+  // /explainer/new's "Or describe it in text instead" CTA so the
+  // conversational build flow surfaces immediately instead of dropping
+  // the user on a blank canvas.
+  const newParam = searchParams?.get("new") === "1";
 
   const [started, setStarted] = useState(false);
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -127,6 +132,14 @@ function Home() {
     }
     if (!user) setStarted(false);
   }, [welcomeParam, libraryParam, user, setActiveCanvasId]);
+
+  // Open the New Workflow modal when the URL carries ?new=1. Then
+  // strip the param so a refresh doesn't reopen the modal indefinitely.
+  useEffect(() => {
+    if (!hydrated || !user || !newParam) return;
+    setNewOpen(true);
+    router.replace("/", { scroll: false });
+  }, [hydrated, user, newParam, router]);
 
   // Auto-dismiss the success toast after 3s.
   useEffect(() => {
