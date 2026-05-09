@@ -12,14 +12,12 @@ import {
   AlertCircle,
   AlertTriangle,
   Link2,
-  Lock,
   Zap,
 } from "lucide-react";
 import { useAuth, useRequireAuth } from "@/lib/auth-context";
 import { AnimatedButterfly } from "./animated-butterfly";
 import { LogoMark } from "./logo";
 import { ConversationFlow } from "./conversation-flow";
-import { ExplainerEntryCard } from "./explainer-entry-card";
 import type { Workflow } from "@/lib/workflows";
 
 // ─── Palette ──────────────────────────────────────────────────────────────
@@ -27,11 +25,12 @@ import type { Workflow } from "@/lib/workflows";
 // load-bearing for the hero design and reading them in context is easier
 // than chasing them through a theme. Tokens match the brand-colours
 // section of the logo spec — see app/components/logo.tsx BRAND_COLORS.
-const HERO_BG = "#2A3330"; // Ink Deep — hero canvas
-const HERO_INK = "#FAFAF5"; // Cream — primary type on dark
-const HERO_INK_DIM = "#A8BDB8"; // muted teal — body type on dark
-const EYEBROW = "#90AB8B"; // Sage Mid — eyebrow + secondary muted
-const CORAL = "#E66B4D"; // Coral — accent: italic "you", Map it, browse CTA
+const HERO_BG = "#1F2A26"; // Splash A handoff bg — slightly deeper / greener
+const HERO_INK = "#EBF4DD"; // Cream — primary type on dark
+const HERO_INK_DIM = "rgba(235, 244, 221, 0.75)"; // body type on dark
+const HERO_INK_MUTED = "rgba(235, 244, 221, 0.6)"; // nav link rest state
+const EYEBROW = "rgba(144, 171, 139, 0.85)"; // Sage Mid eyebrow
+const CORAL = "#E8553E"; // Coral — accent: italic "you", Map it, share-arrow
 
 const dmSerifItalic = {
   fontFamily: "var(--font-dm-serif), serif",
@@ -78,47 +77,105 @@ function getSpeechRecognition(): SpeechRecognitionCtor | null {
 }
 
 // ─── Top bar ───────────────────────────────────────────────────────────────
-// Sits on the dark hero. Logo in coral, right-side CTA is a ghost-on-dark
-// pill — its label flips between "Sign in" and "Go to your canvas" based
-// on auth state so signed-in users who arrive at the landing (via the
-// `?welcome=1` escape hatch) have a way back to the workspace.
-function HeroHeader({ onGoToCanvas }: { onGoToCanvas?: () => void }) {
+// Splash-A handoff layout: logo + Workflow library on the left, share-link
+// + Sign-in pill on the right. The browse-library and share-explainer
+// entries used to live below the fold; promoting them here keeps the
+// fold for one thing only — the prompt box conversion.
+function HeroHeader({
+  onGoToCanvas,
+  onBrowseLibrary,
+  onShareExplainer,
+}: {
+  onGoToCanvas?: () => void;
+  onBrowseLibrary: () => void;
+  onShareExplainer: () => void;
+}) {
   const { user, openGate } = useAuth();
   const showCanvasCTA = !!user && !!onGoToCanvas;
+
+  // Hover state for nav links — inline because the colour change is
+  // dynamic against a dark surface and a CSS class would need a global.
+  const [hoverLib, setHoverLib] = useState(false);
+  const [hoverShare, setHoverShare] = useState(false);
+
   return (
     <header
       className="flex items-center justify-between"
-      style={{ padding: "24px 32px", position: "relative", zIndex: 2 }}
+      style={{ padding: "22px 56px", position: "relative", zIndex: 2 }}
     >
-      <div className="flex items-center gap-2.5">
-        <LogoMark variant="coral" size={32} onDark />
-        <span
+      <div className="flex items-center" style={{ gap: 28 }}>
+        <div className="flex items-center gap-2.5">
+          <LogoMark variant="coral" size={32} onDark />
+          <span
+            style={{
+              ...dmSerifItalic,
+              fontSize: 22,
+              color: HERO_INK,
+              letterSpacing: -0.2,
+            }}
+          >
+            magicus
+          </span>
+        </div>
+        <button
+          onClick={onBrowseLibrary}
+          onMouseEnter={() => setHoverLib(true)}
+          onMouseLeave={() => setHoverLib(false)}
+          className="hidden sm:inline-flex"
           style={{
-            ...dmSerifItalic,
-            fontSize: 24,
-            color: HERO_INK,
-            letterSpacing: -0.2,
+            background: "transparent",
+            border: "none",
+            padding: "4px 0",
+            cursor: "pointer",
+            color: hoverLib ? HERO_INK : HERO_INK_MUTED,
+            fontSize: 13,
+            fontFamily: "inherit",
+            transition: "color 120ms ease",
           }}
         >
-          magicus
-        </span>
+          Workflow library
+        </button>
       </div>
-      <button
-        onClick={() => (showCanvasCTA ? onGoToCanvas!() : openGate())}
-        className="hover:bg-white/5 transition-colors"
-        style={{
-          background: "transparent",
-          color: HERO_INK,
-          padding: "10px 18px",
-          borderRadius: 999,
-          fontSize: 14,
-          fontWeight: 500,
-          border: "1px solid rgba(245, 240, 232, 0.25)",
-          cursor: "pointer",
-        }}
-      >
-        {showCanvasCTA ? "Go to your canvas →" : "Sign in"}
-      </button>
+      <div className="flex items-center" style={{ gap: 18 }}>
+        <button
+          onClick={onShareExplainer}
+          onMouseEnter={() => setHoverShare(true)}
+          onMouseLeave={() => setHoverShare(false)}
+          className="hidden sm:inline-flex items-center"
+          style={{
+            background: "transparent",
+            border: "none",
+            padding: "4px 0",
+            cursor: "pointer",
+            color: hoverShare ? HERO_INK : HERO_INK_MUTED,
+            fontSize: 13,
+            fontFamily: "inherit",
+            transition: "color 120ms ease",
+          }}
+        >
+          Built something?{" "}
+          <strong style={{ color: HERO_INK, fontWeight: 500, marginLeft: 4 }}>
+            Share it
+          </strong>
+          <span style={{ color: CORAL, marginLeft: 4 }}>→</span>
+        </button>
+        <button
+          onClick={() => (showCanvasCTA ? onGoToCanvas!() : openGate())}
+          className="hover:bg-white/[0.08] transition-colors"
+          style={{
+            background: "transparent",
+            color: HERO_INK,
+            padding: "8px 18px",
+            borderRadius: 22,
+            fontSize: 13,
+            fontWeight: 500,
+            border: "1px solid rgba(235, 244, 221, 0.25)",
+            cursor: "pointer",
+          }}
+        >
+          {showCanvasCTA ? "Go to your canvas →" : "Sign in"}
+        </button>
+      </div>
     </header>
   );
 }
@@ -256,48 +313,8 @@ function HeroSection({
           onAdaptLibrary={onAdaptLibrary}
           onBrowseLibrary={onBrowseLibrary}
         />
-
-        <button
-          onClick={onBrowseLibrary}
-          className="hover:underline flex items-center gap-1 mt-6"
-          style={{
-            background: "transparent",
-            color: CORAL,
-            fontSize: 13,
-            fontWeight: 500,
-            border: "none",
-            padding: "8px 12px",
-            cursor: "pointer",
-          }}
-        >
-          Or browse the workflow library
-          <ArrowRight size={13} />
-        </button>
-
-        {/* Soft divider then the second entry point. The dark hero
-            background means we use a faint warm divider rather than the
-            sage app-background ones used elsewhere. */}
-        <div
-          style={{
-            width: "min(680px, 100%)",
-            margin: "44px auto 16px",
-            display: "flex",
-            alignItems: "center",
-            gap: 14,
-            color: HERO_INK_DIM,
-            fontSize: 12,
-            letterSpacing: "0.1em",
-            textTransform: "uppercase",
-            fontWeight: 500,
-            opacity: 0.85,
-          }}
-        >
-          <span style={{ flex: 1, height: 1, background: "rgba(168, 189, 184, 0.25)" }} />
-          Already built something?
-          <span style={{ flex: 1, height: 1, background: "rgba(168, 189, 184, 0.25)" }} />
-        </div>
-
-        <ExplainerEntryCard />
+        {/* Both below-fold entries (browse library + share explainer)
+            live in the nav now. The fold is the prompt box only. */}
       </div>
     </section>
   );
@@ -504,8 +521,12 @@ function PromptBox({
 
   const inConversation = stage === "conversation";
   const generating = stage === "generating";
+  // Splash-A spec: Map it stays disabled until the textarea has at least
+  // 12 chars so we don't kick the conversational flow off a one-word
+  // input that produces a generic, unhelpful first turn.
+  const MIN_CHARS = 12;
   const submitDisabled =
-    text.trim().length === 0 || generating || inConversation;
+    text.trim().length < MIN_CHARS || generating || inConversation;
   const showVoiceUI = mode === "voice" && !inConversation && !generating;
 
   return (
@@ -661,8 +682,6 @@ function PromptBox({
               icon={<Mic size={12} />}
               active={mode === "voice"}
               onClick={() => switchMode("voice")}
-              locked={!user}
-              lockedTitle="Sign in to use voice input"
             />
           )}
           <ModePill
@@ -670,8 +689,6 @@ function PromptBox({
             icon={<Video size={12} />}
             active={false}
             onClick={() => switchMode("record")}
-            locked={!user}
-            lockedTitle="Sign in to record your screen"
           />
         </div>
 
@@ -680,16 +697,15 @@ function PromptBox({
           disabled={submitDisabled}
           className="flex items-center gap-2 transition-colors"
           style={{
-            // Disabled state: lighter coral that still looks intentional
-            // (the 0.4 opacity it used to be made it read as broken).
-            background: submitDisabled ? "#F4A294" : CORAL,
+            background: CORAL,
             color: "#FFFFFF",
-            padding: "10px 20px",
-            borderRadius: 999,
+            padding: "11px 22px",
+            borderRadius: 22,
             fontSize: 14,
             fontWeight: 500,
             border: "none",
             cursor: submitDisabled ? "not-allowed" : "pointer",
+            opacity: submitDisabled && !generating ? 0.5 : 1,
           }}
         >
           {generating ? (
@@ -717,8 +733,6 @@ function ModePill({
   active,
   onClick,
   activeIconColor,
-  locked,
-  lockedTitle,
 }: {
   label: string;
   icon: React.ReactNode;
@@ -727,23 +741,18 @@ function ModePill({
   // When set, the icon is wrapped in a coloured span only while active.
   // Lets the Describe pill show a coral sparkle on the dark active state.
   activeIconColor?: string;
-  // Auth-gated mode for unauthed users: shows a small padlock so the
-  // sign-in modal isn't a surprise on click.
-  locked?: boolean;
-  lockedTitle?: string;
 }) {
   return (
     <button
       onClick={onClick}
-      title={locked ? lockedTitle : undefined}
       className="flex items-center gap-1.5 transition-colors"
       style={{
-        background: active ? HERO_BG : "transparent",
-        color: active ? "#FFFFFF" : "#6B8A8F",
-        border: `1px solid ${active ? HERO_BG : "#DCE3E5"}`,
-        padding: "6px 12px",
-        borderRadius: 999,
-        fontSize: 12,
+        background: active ? "#3B4953" : "transparent",
+        color: active ? "#EBF4DD" : "#3B4953",
+        border: `1px solid ${active ? "#3B4953" : "rgba(84, 120, 99, 0.3)"}`,
+        padding: "9px 16px",
+        borderRadius: 22,
+        fontSize: 13,
         fontWeight: 500,
         cursor: "pointer",
       }}
@@ -754,13 +763,6 @@ function ModePill({
         icon
       )}
       {label}
-      {locked && (
-        <Lock
-          size={10}
-          style={{ color: "#90A6AC", marginLeft: 2 }}
-          aria-label="Sign in required"
-        />
-      )}
     </button>
   );
 }
@@ -1011,6 +1013,7 @@ export function LandingHero({
   onBrowseLibrary,
   onRecord,
   onGoToCanvas,
+  onShareExplainer,
   libraryWorkflows,
   onAdaptLibrary,
 }: {
@@ -1020,6 +1023,10 @@ export function LandingHero({
   // Optional: when set, the header CTA flips to "Go to your canvas →"
   // for signed-in users who reached the landing via the escape hatch.
   onGoToCanvas?: () => void;
+  // Top-right "Built something? Share it →" — auth-gated, parent
+  // handles the sessionStorage handoff + post-OAuth route to
+  // /explainer/new (same pattern as the canvas top-bar entry).
+  onShareExplainer: () => void;
   // Library templates the parent has loaded — used by path 1 to pick
   // the recommended starting workflow once the conversation completes.
   libraryWorkflows: Workflow[];
@@ -1028,7 +1035,11 @@ export function LandingHero({
   return (
     <div className="min-h-screen w-full flex flex-col" style={{ ...dmSans }}>
       <div className="flex flex-col" style={{ minHeight: "100vh", background: HERO_BG }}>
-        <HeroHeader onGoToCanvas={onGoToCanvas} />
+        <HeroHeader
+          onGoToCanvas={onGoToCanvas}
+          onBrowseLibrary={onBrowseLibrary}
+          onShareExplainer={onShareExplainer}
+        />
         <HeroSection
           onMap={onMap}
           onBrowseLibrary={onBrowseLibrary}

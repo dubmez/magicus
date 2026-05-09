@@ -721,6 +721,16 @@ function Home() {
         // Signed-in user viewing the landing via ?welcome=1 — give them a
         // direct path back to their workspace.
         onGoToCanvas={user ? () => router.push("/") : undefined}
+        onShareExplainer={() => {
+          // Auth-gate the click. Unauthed users get the OAuth bounce;
+          // the magicus_pending_explainer flag survives the redirect
+          // and is consumed by the replay useEffect above, which then
+          // routes here to /explainer/new.
+          if (!user) {
+            try { sessionStorage.setItem("magicus_pending_explainer", "1"); } catch { /* ignore */ }
+          }
+          guard(() => router.push("/explainer/new"));
+        }}
         libraryWorkflows={libraryWorkflows}
         onAdaptLibrary={handleAdapt}
       />
