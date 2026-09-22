@@ -1243,10 +1243,17 @@ export function DetailPanel({
   useEffect(() => {
     if (!workflow) { setRemixCount(0); return; }
     let cancelled = false;
-    void storage.loadSharesByWorkflowId(workflow.id).then((shares) => {
-      if (cancelled) return;
-      setRemixCount(shares.reduce((sum, s) => sum + s.remixCount, 0));
-    });
+    void storage
+      .loadSharesByWorkflowId(workflow.id)
+      .then((shares) => {
+        if (cancelled) return;
+        setRemixCount(shares.reduce((sum, s) => sum + s.remixCount, 0));
+      })
+      // Signed out there are no shares to count, and the Supabase backend
+      // says so by throwing. Zero is the right answer, not a console error.
+      .catch(() => {
+        if (!cancelled) setRemixCount(0);
+      });
     return () => { cancelled = true; };
   }, [workflow]);
 
