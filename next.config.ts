@@ -1,5 +1,11 @@
 import type { NextConfig } from "next";
 
+// The finance demo's Agents and Track screens live in a separate app (the control
+// layer) and are served here through rewrites, so the viewer stays on magicus.io.
+// Phase 1 of bringing them together: route, don't merge.
+const AGENTS_ZONE =
+  process.env.AGENTS_ZONE_URL ?? "https://finops-control.vercel.app";
+
 const nextConfig: NextConfig = {
   // ─── Security headers ─────────────────────────────────────────────────
   // Applied to every response. Doesn't include CSP yet — that needs
@@ -31,7 +37,36 @@ const nextConfig: NextConfig = {
           },
         ],
       },
+      {
+        // Rewrite caching can hand an RSC request a cached HTML response (or
+        // the reverse) across the zone boundary. The demo is small; skip it.
+        source: "/:zone(agents|track)/:path*",
+        headers: [{ key: "x-vercel-enable-rewrite-caching", value: "0" }],
+      },
+      {
+        source: "/:zone(agents|track)",
+        headers: [{ key: "x-vercel-enable-rewrite-caching", value: "0" }],
+      },
     ];
+  },
+
+  // ─── Agents and Track zones ───────────────────────────────────────────
+  // beforeFiles so nothing in this app can shadow them. Links into these
+  // paths must be plain <a>, never <Link>: a client-side hop across zones
+  // would load the other app's payload into this app's router.
+  async rewrites() {
+    return {
+      beforeFiles: [
+        { source: "/agents", destination: `${AGENTS_ZONE}/agents` },
+        { source: "/agents/:path+", destination: `${AGENTS_ZONE}/agents/:path+` },
+        { source: "/track", destination: `${AGENTS_ZONE}/track` },
+        { source: "/track/:path+", destination: `${AGENTS_ZONE}/track/:path+` },
+        {
+          source: "/agents-static/:path+",
+          destination: `${AGENTS_ZONE}/agents-static/:path+`,
+        },
+      ],
+    };
   },
 
   // ─── Canonical host ───────────────────────────────────────────────────
