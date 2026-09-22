@@ -1172,6 +1172,7 @@ export function DetailPanel({
   onAutomate,
   onShare,
   onAdapt,
+  readOnlyNote = "This is a library workflow — adapt it to make it yours.",
 }: {
   workflow: Workflow | null;
   incomingWorkflows?: Workflow[];
@@ -1186,6 +1187,9 @@ export function DetailPanel({
   // "Adapt this" — clones the workflow (or its full chain) into the
   // user's canvas. Only invoked when the workflow is a library entry.
   onAdapt?: (id: string) => void;
+  // What the read-only banner says. Defaults to the library wording; the
+  // finance demo's map passes its own.
+  readOnlyNote?: string;
 }) {
   const { user, openGate } = useAuth();
   const unauthReadOnly = !user && !readOnly;
@@ -1315,7 +1319,7 @@ export function DetailPanel({
                   fontStyle: "italic",
                 }}
               >
-                This is a library workflow — adapt it to make it yours.
+                {readOnlyNote}
               </div>
             )}
             {unauthReadOnly && (
