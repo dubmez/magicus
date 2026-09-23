@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
-import { rankWorkflows, formatPounds, HOURLY_RATE } from "./demo-map";
+import { waitsInside } from "./chaining";
+import { rankWorkflows, formatPounds, HOURLY_RATE, FRICTIONS, DEMO_WORKFLOWS, DEPARTMENTS, LEAD_FRICTION, workflowBySlug } from "./demo-map";
 
 describe("the demo's ranked workflows", () => {
   const ranked = rankWorkflows();
@@ -31,5 +32,69 @@ describe("the demo's ranked workflows", () => {
     expect(ranked.find((w) => w.name === "Supplier contract review")!.agentHref).toBe(
       "/agents?mode=contracts",
     );
+  });
+});
+
+describe("the frictions an executive picks from", () => {
+  it("covers every department, and leads with supplier invoices", () => {
+    expect(new Set(FRICTIONS.map((f) => f.department))).toEqual(new Set(DEPARTMENTS));
+    expect(FRICTIONS.find((f) => f.id === LEAD_FRICTION)?.workflowId).toBe("demo-invoice-check");
+  });
+
+  it("opens only workflows that exist, each once", () => {
+    const wired = FRICTIONS.flatMap((f) => (f.workflowId ? [f.workflowId] : []));
+    expect(new Set(wired).size).toBe(wired.length);
+    for (const id of wired) expect(DEMO_WORKFLOWS.some((w) => w.id === id)).toBe(true);
+  });
+});
+
+describe("the map's value hotspots", () => {
+  it("sit on real steps, at most one to a step", () => {
+    for (const w of DEMO_WORKFLOWS) {
+      const steps = w.hotspots.map((h) => h.step);
+      expect(new Set(steps).size).toBe(steps.length);
+      for (const n of steps) expect(w.steps.some((s) => s.n === n)).toBe(true);
+    }
+  });
+
+  it("each map has its own address", () => {
+    expect(workflowBySlug("invoice-check")?.id).toBe("demo-invoice-check");
+    expect(new Set(DEMO_WORKFLOWS.map((w) => w.slug)).size).toBe(DEMO_WORKFLOWS.length);
+  });
+
+  it("names the money on the agents' maps, and leaves counting it to the agent", () => {
+    for (const w of DEMO_WORKFLOWS.filter((w) => w.agentHref)) {
+      expect(w.hotspots.some((h) => h.kind === "money")).toBe(true);
+      expect(w.teaser).toBeTruthy();
+      expect(w.summary).not.toMatch(/£/);
+    }
+  });
+});
+
+describe("where a map splits into a chain", () => {
+  it("every butterfly on the demo follows the rule: nothing waits part-way through one", () => {
+    for (const w of DEMO_WORKFLOWS) {
+      const parts = w.chain ?? [{ from: w.steps[0].n, to: w.steps.at(-1)!.n }];
+      for (const part of parts) {
+        const steps = w.steps.filter((s) => s.n >= part.from && s.n <= part.to);
+        expect(waitsInside(steps), `${w.name}, steps ${part.from}-${part.to}`).toEqual([]);
+      }
+    }
+  });
+
+  it("month-end is two butterflies because the close waits on receipts", () => {
+    const close = DEMO_WORKFLOWS.find((w) => w.id === "demo-month-end-close")!;
+    expect(waitsInside(close.steps)[0].afterStep).toBe(3);
+    expect(close.chain!.map((p) => [p.from, p.to, p.handoff])).toEqual([
+      [1, 3, "Receipts in"],
+      [4, 10, undefined],
+    ]);
+  });
+
+  it("a chain covers every step once, in order", () => {
+    for (const w of DEMO_WORKFLOWS.filter((w) => w.chain)) {
+      const covered = w.chain!.flatMap((p) => w.steps.filter((s) => s.n >= p.from && s.n <= p.to).map((s) => s.n));
+      expect(covered).toEqual(w.steps.map((s) => s.n));
+    }
   });
 });

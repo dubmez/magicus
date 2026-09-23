@@ -6,6 +6,9 @@ import { calculateAutomationScore, SENSITIVE_META } from "@/lib/workflows";
 
 type IOItem = { name: string; source: string };
 
+/** A mark on one step, e.g. where value sits. Keyed by step number. */
+export type StepMark = { label: string; fg: string; bg: string };
+
 export type ButterflyData = {
   name: string;
   inputs: IOItem[];
@@ -38,6 +41,93 @@ function IOCard({ item, align }: { item: IOItem; align: "left" | "right" }) {
   );
 }
 
+/** A short dashed line from one step box to the next, ending in a small arrowhead. */
+function StepConnector({ compact }: { compact: boolean }) {
+  const h = compact ? 8 : 14
+  return (
+    <div aria-hidden style={{ display: "flex", flexDirection: "column", alignItems: "center", height: h }}>
+      <div style={{ flex: 1, borderLeft: "1.5px dashed #90AB8B" }} />
+      <div
+        style={{
+          width: 0,
+          height: 0,
+          borderLeft: `${compact ? 3 : 4}px solid transparent`,
+          borderRight: `${compact ? 3 : 4}px solid transparent`,
+          borderTop: `${compact ? 3 : 4}px solid #90AB8B`,
+        }}
+      />
+    </div>
+  );
+}
+
+/**
+ * One wing: as tall as what it holds, level with the middle of the body, and joined
+ * to it by a dashed line, so inputs read as flowing in and outputs as flowing out.
+ */
+function Wing({
+  side,
+  label,
+  items,
+  compact,
+}: {
+  side: "left" | "right";
+  label: string;
+  items: IOItem[];
+  compact: boolean;
+}) {
+  const left = side === "left";
+  const outer = compact ? 18 : 28;
+  const inner = compact ? 8 : 12;
+  const wing = (
+    <div
+      style={{
+        flex: 1,
+        minWidth: 0,
+        background: "#EBF4DD",
+        borderRadius: left ? `${outer}px ${inner}px ${inner}px ${outer}px` : `${inner}px ${outer}px ${outer}px ${inner}px`,
+        padding: compact ? "10px 8px" : "16px 16px",
+      }}
+    >
+      <div
+        style={{
+          fontSize: compact ? 8 : 10,
+          fontWeight: 600,
+          color: "#547863",
+          letterSpacing: 1.4,
+          textTransform: "uppercase",
+          marginBottom: compact ? 6 : 10,
+          textAlign: left ? "left" : "right",
+        }}
+      >
+        {label}
+      </div>
+      <div className="flex flex-col gap-1.5">
+        {items.map((item) => (
+          <IOCard key={item.name} item={item} align={side} />
+        ))}
+      </div>
+    </div>
+  );
+  const joint = (
+    <div aria-hidden style={{ width: compact ? 8 : 14, borderTop: "1.5px dashed #90AB8B", flexShrink: 0 }} />
+  );
+  return (
+    <div style={{ flex: 1, minWidth: 0, display: "flex", alignItems: "center" }}>
+      {left ? (
+        <>
+          {wing}
+          {joint}
+        </>
+      ) : (
+        <>
+          {joint}
+          {wing}
+        </>
+      )}
+    </div>
+  );
+}
+
 export function ButterflyCard({
   data,
   selected = false,
@@ -47,6 +137,8 @@ export function ButterflyCard({
   shared = false,
   incomplete = false,
   maxSteps,
+  marks,
+  hideScore = false,
   onClick,
   onMouseEnter,
   onMouseLeave,
@@ -59,6 +151,9 @@ export function ButterflyCard({
   shared?: boolean;
   incomplete?: boolean;
   maxSteps?: number;
+  marks?: Record<number, StepMark>;
+  /** Leave the automation score pill off, for a view that says it another way. */
+  hideScore?: boolean;
   onClick?: (e: React.MouseEvent) => void;
   onMouseEnter?: () => void;
   onMouseLeave?: () => void;
@@ -147,7 +242,7 @@ export function ButterflyCard({
         </>
       )}
 
-      {effectiveScore > 0 && (
+      {effectiveScore > 0 && !hideScore && (
         // Continuous score pill — no threshold cliff. Sage when ≥70 (the
         // workflow is mostly automatable), muted neutral below so users see
         // the gradient as they classify rather than a binary jump.
@@ -212,71 +307,33 @@ export function ButterflyCard({
         </div>
       </div>
 
-      {/* WINGS + BODY */}
-      <div className="flex items-stretch" style={{ marginTop: compact ? -6 : -8 }}>
-        {/* LEFT WING */}
-        <div
-          style={{
-            flex: 1,
-            background: "#EBF4DD",
-            borderTopLeftRadius: compact ? 14 : 20,
-            borderBottomLeftRadius: compact ? 18 : 28,
-            borderTopRightRadius: 0,
-            borderBottomRightRadius: 0,
-            padding: compact ? "12px 8px 12px 12px" : "20px 16px 20px 20px",
-            borderRight: "1.5px dashed #90AB8B",
-          }}
-        >
-          <div
-            style={{
-              fontSize: compact ? 8 : 10,
-              fontWeight: 600,
-              color: "#547863",
-              letterSpacing: 1.4,
-              textTransform: "uppercase",
-              marginBottom: compact ? 6 : 10,
-            }}
-          >
-            Inputs
-          </div>
-          <div className="flex flex-col gap-1.5">
-            {data.inputs.map((i) => (
-              <IOCard key={i.name} item={i} align="left" />
-            ))}
-          </div>
-        </div>
+      {/* WINGS + BODY
+          The body is the process: its steps joined box to box, top to bottom. The
+          wings are short, and sit level with the middle of the body, joined to it by
+          a dashed line: inputs flow in on the left, outputs flow out on the right. */}
+      <div
+        className="flex items-center"
+        style={{ marginTop: compact ? -6 : -8, gap: 0 }}
+      >
+        <Wing side="left" label="Inputs" items={data.inputs} compact={compact} />
 
-        {/* BODY */}
-        {/* Width tuned so the steps column gets ~45% of the card and each
-            wing ~27.5%. Card is 560px (compact 280px), so 252/126 here lets
-            step text breathe without enlarging the overall footprint. */}
         <div
           style={{
             width: compact ? 126 : 252,
             background: "#FFFFFF",
-            padding: compact ? "10px 6px" : "18px 14px",
-            position: "relative",
+            borderRadius: compact ? 12 : 18,
+            padding: compact ? "14px 6px 10px" : "24px 14px 18px",
+            alignSelf: "stretch",
+            boxShadow: "0 0 0 1px #EBF4DD",
           }}
         >
-          <div
-            aria-hidden
-            style={{
-              position: "absolute",
-              left: "50%",
-              top: 24,
-              bottom: 24,
-              width: 0,
-              borderLeft: "1.5px dashed #90AB8B",
-              transform: "translateX(-0.75px)",
-              zIndex: 0,
-            }}
-          />
-          <div className="relative flex flex-col gap-2" style={{ zIndex: 1 }}>
-            {steps.map((t) => (
+          <div className="flex flex-col">
+            {steps.map((t, i) => (
               <div key={t.n}>
                 <div
                   style={{
-                    background: "#F7FAF2",
+                    background: marks?.[t.n] ? marks[t.n].bg : "#F7FAF2",
+                    boxShadow: marks?.[t.n] ? `inset 0 0 0 1.5px ${marks[t.n].fg}` : "inset 0 0 0 1px #E3EAD8",
                     borderRadius: 10,
                     padding: compact ? "5px 7px" : "8px 10px",
                     display: "flex",
@@ -303,12 +360,34 @@ export function ButterflyCard({
                     {t.n}
                   </span>
                   <div style={{ flex: 1, minWidth: 0 }}>
-                    <span style={{ fontSize: compact ? 9 : 11, color: "#3B4953", lineHeight: 1.35 }}>
+                    <div style={{ fontSize: compact ? 9 : 11, color: "#3B4953", lineHeight: 1.35 }}>
                       {t.text}
-                    </span>
+                    </div>
                     {t.owner && !compact && (
                       <div style={{ fontSize: 9, color: "#90AB8B", marginTop: 2, lineHeight: 1.3 }}>
                         {t.owner}
+                      </div>
+                    )}
+                    {/* Marks and notes live inside the box, so the line between boxes stays clean. */}
+                    {marks?.[t.n] && !compact && (
+                      <div
+                        style={{
+                          display: "inline-flex",
+                          alignItems: "center",
+                          gap: 4,
+                          marginTop: 4,
+                          fontSize: 9.5,
+                          fontWeight: 600,
+                          color: marks[t.n].fg,
+                        }}
+                      >
+                        <span aria-hidden style={{ width: 6, height: 6, borderRadius: 999, background: marks[t.n].fg }} />
+                        {marks[t.n].label}
+                      </div>
+                    )}
+                    {t.note && !compact && (
+                      <div style={{ ...dmSerif, fontSize: 10, color: "#547863", marginTop: 4, lineHeight: 1.35 }}>
+                        {t.note}
                       </div>
                     )}
                   </div>
@@ -327,56 +406,13 @@ export function ButterflyCard({
                     </span>
                   )}
                 </div>
-                {t.note && !compact && (
-                  <div
-                    style={{
-                      ...dmSerif,
-                      fontSize: 10,
-                      color: "#547863",
-                      marginTop: 4,
-                      marginLeft: 28,
-                    }}
-                  >
-                    {t.note}
-                  </div>
-                )}
+                {i < steps.length - 1 && <StepConnector compact={compact} />}
               </div>
             ))}
           </div>
         </div>
 
-        {/* RIGHT WING */}
-        <div
-          style={{
-            flex: 1,
-            background: "#EBF4DD",
-            borderTopRightRadius: compact ? 14 : 20,
-            borderBottomRightRadius: compact ? 18 : 28,
-            borderTopLeftRadius: 0,
-            borderBottomLeftRadius: 0,
-            padding: compact ? "12px 12px 12px 8px" : "20px 20px 20px 16px",
-            borderLeft: "1.5px dashed #90AB8B",
-          }}
-        >
-          <div
-            style={{
-              fontSize: compact ? 8 : 10,
-              fontWeight: 600,
-              color: "#547863",
-              letterSpacing: 1.4,
-              textTransform: "uppercase",
-              marginBottom: compact ? 6 : 10,
-              textAlign: "right",
-            }}
-          >
-            Outputs
-          </div>
-          <div className="flex flex-col gap-1.5">
-            {data.outputs.map((o) => (
-              <IOCard key={o.name} item={o} align="right" />
-            ))}
-          </div>
-        </div>
+        <Wing side="right" label="Outputs" items={data.outputs} compact={compact} />
       </div>
 
       {/* FOOT — only when there are tools to show */}

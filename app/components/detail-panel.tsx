@@ -1173,6 +1173,7 @@ export function DetailPanel({
   onShare,
   onAdapt,
   readOnlyNote = "This is a library workflow — adapt it to make it yours.",
+  hideFooter = false,
 }: {
   workflow: Workflow | null;
   incomingWorkflows?: Workflow[];
@@ -1190,6 +1191,8 @@ export function DetailPanel({
   // What the read-only banner says. Defaults to the library wording; the
   // finance demo's map passes its own.
   readOnlyNote?: string;
+  // Leave the actions footer off, for a view that has nothing to act on.
+  hideFooter?: boolean;
 }) {
   const { user, openGate } = useAuth();
   const unauthReadOnly = !user && !readOnly;
@@ -1630,7 +1633,7 @@ export function DetailPanel({
             </Section>
           </fieldset>
 
-          <DetailFooter
+          {hideFooter ? null : <DetailFooter
             workflow={workflow}
             effectiveReadOnly={effectiveReadOnly}
             isLibrary={isLibrary}
@@ -1640,7 +1643,7 @@ export function DetailPanel({
             onChain={onChain}
             onExport={onExport}
             onDelete={onDelete}
-          />
+          />}
         </>
       )}
     </div>

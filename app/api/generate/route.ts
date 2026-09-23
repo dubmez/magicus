@@ -1,4 +1,5 @@
 import Anthropic from "@anthropic-ai/sdk";
+import { CHAIN_RULE } from "@/lib/chaining";
 import { GoogleGenAI, Type } from "@google/genai";
 import { type NextRequest, NextResponse } from "next/server";
 import { withRetry } from "@/lib/retry";
@@ -26,10 +27,7 @@ Rules:
 2. Preserve specificity in step text. If the user said "check eligibility against the refund policy doc in Notion", the step should say exactly that — not "verify request" or "review eligibility". Within those bounds, prefer action-first phrasing: "Check eligibility in Notion" over "Eligibility is checked in Notion", "Click 'New post' in Buffer" over "A new post is created in Buffer".
 3. Only infer fields the user did not specify. When inferring, be conservative: prefer fewer steps and fewer tools over plausible-sounding generic content. It is better to leave a field empty than to fill it with a guess.
 4. Empty fields are fine — empty trigger, empty step owners, empty notes. The UI prompts the user to fill them in. Do not pad.
-5. Decide between one workflow vs a chain:
-   - If the description has multiple distinct stages with different triggers OR clear handoffs between teams/systems, generate multiple connected workflow cards forming a chain.
-   - If it's a single coherent process, generate ONE card.
-   - Err toward fewer cards when uncertain.
+5. ${CHAIN_RULE}
 6. When generating a chain, the FIRST workflow keeps its real trigger (schedule/event/manual). Downstream workflows in the chain MUST have trigger.type = "chained" and no description, since the connection itself is the trigger. Use the connection's "label" to describe the handoff (e.g. "Lead qualified", "Draft approved").
 7. Theme must be one of: sales, marketing, operations, finance. Pick based on the workflow's domain.
 8. automationScore is a 0-100 estimate of how much of this workflow could realistically be automated. Be honest — work that requires human judgement should score lower.

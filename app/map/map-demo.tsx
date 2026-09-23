@@ -1,74 +1,58 @@
 "use client";
 
-import { useCallback, useMemo, useState } from "react";
-import { useSearchParams } from "next/navigation";
+import { useEffect, useMemo, useState } from "react";
+import Link from "next/link";
+import { useRouter, useSearchParams } from "next/navigation";
 import { DemoHeader } from "@/app/components/demo-header";
 import { DemoProcessing } from "@/app/components/demo-processing";
-import { ButterflyCard } from "@/app/components/butterfly-card";
-import { DetailPanel } from "@/app/components/detail-panel";
 import {
   CAPTURE_VIDEO_SRC,
   PROCESSING_MESSAGES,
   PROCESSING_MS,
+  DEMO_WORKFLOWS,
   formatPounds,
   rankWorkflows,
   type RankedWorkflow,
 } from "@/lib/demo-map";
+import { Frictions } from "./frictions";
+import { C, SANS, SERIF } from "./theme";
 
-// Act 1 of the finance demo. A capture of someone doing their job, the steps
-// magicus found in it, and a ranked answer to "what should we automate first?"
+// The demo opens here, on the frictions an executive would name. Each mapped one
+// opens its map at /map/<slug>. Two more views stay one step away: the mapped
+// workflows ranked side by side (?screen=list), and a capture of someone doing
+// the job (?screen=capture), which leads into that ranking.
 // The agents live in another zone of this domain, so every link into them is
 // a plain <a>: a client-side hop across zones would load the wrong app.
 
-type Screen = "capture" | "processing" | "list" | "detail";
-
-const C = {
-  bg: "#F7FAF2",
-  ink: "#3B4953",
-  sage: "#547863",
-  sageMid: "#90AB8B",
-  surface: "#EBF4DD",
-  rule: "#E3EAD8",
-  white: "#FFFFFF",
-  coral: "#E8553E",
-};
-const SANS = "var(--font-dm-sans), system-ui, sans-serif";
-const SERIF = "var(--font-dm-serif), Georgia, serif";
-
-const noop = () => {};
+type Screen = "frictions" | "capture" | "processing" | "list";
 
 export function MapDemo() {
   const params = useSearchParams();
+  const router = useRouter();
   const ranked = useMemo(() => rankWorkflows(), []);
-  // Cold opens for a presenter: ?screen=list skips the capture, ?open=<id>
-  // goes straight to one workflow's map.
-  const opened = ranked.find((w) => w.id === params.get("open"))?.id ?? null;
-  const initial: Screen = opened ? "detail" : params.get("screen") === "list" ? "list" : "capture";
-  const [screen, setScreen] = useState<Screen>(initial);
-  const [selectedId, setSelectedId] = useState<string | null>(opened);
-  const selected = ranked.find((w) => w.id === selectedId) ?? null;
+  const asked = params.get("screen");
+  const [screen, setScreen] = useState<Screen>(asked === "list" ? "list" : asked === "capture" ? "capture" : "frictions");
 
-  const toList = useCallback(() => setScreen("list"), []);
+  // Older presenter links: ?open=<id> now lives at the map's own address.
+  const opened = DEMO_WORKFLOWS.find((w) => w.id === params.get("open"));
+  useEffect(() => {
+    if (opened) router.replace(`/map/${opened.slug}`);
+  }, [opened, router]);
+
+  // The header's "Frictions" lands on /map with no query; follow it back.
+  useEffect(() => {
+    setScreen(asked === "list" ? "list" : asked === "capture" ? "capture" : "frictions");
+  }, [asked]);
 
   return (
     <div style={{ minHeight: "100vh", background: C.bg, color: C.ink, fontFamily: SANS }}>
       <DemoHeader zone="map" />
+      {screen === "frictions" && !opened ? <Frictions /> : null}
       {screen === "capture" ? <Capture onDone={() => setScreen("processing")} /> : null}
       {screen === "processing" ? (
-        <DemoProcessing messages={PROCESSING_MESSAGES} durationMs={PROCESSING_MS} onDone={toList} />
+        <DemoProcessing messages={PROCESSING_MESSAGES} durationMs={PROCESSING_MS} onDone={() => setScreen("list")} />
       ) : null}
-      {screen === "list" ? (
-        <RankedList
-          ranked={ranked}
-          onOpen={(id) => {
-            setSelectedId(id);
-            setScreen("detail");
-          }}
-        />
-      ) : null}
-      {screen === "detail" && selected ? (
-        <Detail workflow={selected} onBack={() => setScreen("list")} />
-      ) : null}
+      {screen === "list" ? <RankedList ranked={ranked} /> : null}
     </div>
   );
 }
@@ -149,21 +133,23 @@ function Capture({ onDone }: { onDone: () => void }) {
   );
 }
 
-function RankedList({ ranked, onOpen }: { ranked: RankedWorkflow[]; onOpen: (id: string) => void }) {
+function RankedList({ ranked }: { ranked: RankedWorkflow[] }) {
   const [top] = ranked;
   return (
     <main style={{ maxWidth: 1240, margin: "0 auto", padding: "48px 32px 72px" }}>
+      <Link href="/map" style={{ fontFamily: SANS, fontSize: 14, color: C.sage, textDecoration: "none", display: "inline-block", marginBottom: 20 }}>
+        ← All frictions
+      </Link>
       <h1 style={{ fontFamily: SERIF, fontWeight: 400, fontSize: 44, margin: "0 0 10px", letterSpacing: "-0.01em" }}>
-        Three workflows. One to automate first.
+        Three workflows. One to start with.
       </h1>
       <p style={{ fontSize: 17, color: C.sage, margin: "0 0 36px" }}>
-        Ranked by the hours automating each one gives back. The first one is worth ~{top.hoursBack} hours back each
-        month.
+        Ranked by the hours an agent gives back. The first is worth ~{top.hoursBack} hours back each month.
       </p>
 
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))", gap: 20 }}>
         {ranked.map((workflow, index) => (
-          <WorkflowCard key={workflow.id} workflow={workflow} first={index === 0} rank={index + 1} onOpen={onOpen} />
+          <WorkflowCard key={workflow.id} workflow={workflow} first={index === 0} rank={index + 1} />
         ))}
       </div>
     </main>
@@ -174,12 +160,10 @@ function WorkflowCard({
   workflow,
   first,
   rank,
-  onOpen,
 }: {
   workflow: RankedWorkflow;
   first: boolean;
   rank: number;
-  onOpen: (id: string) => void;
 }) {
   return (
     <article
@@ -207,7 +191,7 @@ function WorkflowCard({
               padding: "4px 10px",
             }}
           >
-            Automate this first
+            Start here
           </span>
         ) : null}
       </div>
@@ -218,7 +202,7 @@ function WorkflowCard({
       <div style={{ fontSize: 14, color: C.sage, marginBottom: 22 }}>{workflow.owner}</div>
 
       <dl style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 12, margin: "0 0 18px" }}>
-        <Stat label="Readiness" value={`${workflow.readiness}%`} />
+        <Stat label="Agent-ready" value={`${workflow.readiness}%`} />
         <Stat label="Hours per month" value={`${workflow.hoursPerMonth}`} />
         <Stat label="Cost per month" value={formatPounds(workflow.costPerMonth)} />
       </dl>
@@ -248,25 +232,15 @@ function WorkflowCard({
               border: first ? "none" : `1px solid ${C.rule}`,
             }}
           >
-            Automate this →
+            Put an agent on it →
           </a>
         ) : null}
-        <button
-          type="button"
-          onClick={() => onOpen(workflow.id)}
-          style={{
-            fontFamily: SANS,
-            fontSize: 14,
-            fontWeight: 500,
-            color: C.sage,
-            background: "none",
-            border: "none",
-            padding: 0,
-            cursor: "pointer",
-          }}
+        <Link
+          href={`/map/${workflow.slug}`}
+          style={{ fontFamily: SANS, fontSize: 14, fontWeight: 500, color: C.sage, textDecoration: "none" }}
         >
           See the map
-        </button>
+        </Link>
       </div>
     </article>
   );
@@ -277,57 +251,6 @@ function Stat({ label, value }: { label: string; value: string }) {
     <div style={{ background: C.bg, borderRadius: 10, padding: "10px 12px" }}>
       <dt style={{ fontSize: 11, color: C.sage, marginBottom: 4 }}>{label}</dt>
       <dd style={{ margin: 0, fontSize: 20, fontWeight: 600, fontVariantNumeric: "tabular-nums" }}>{value}</dd>
-    </div>
-  );
-}
-
-function Detail({ workflow, onBack }: { workflow: RankedWorkflow; onBack: () => void }) {
-  return (
-    <div style={{ display: "flex", height: "calc(100vh - 65px)" }}>
-      <main style={{ flex: 1, minWidth: 0, overflow: "auto", padding: "28px 32px 48px" }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 16, marginBottom: 28, flexWrap: "wrap" }}>
-          <button
-            type="button"
-            onClick={onBack}
-            style={{ fontFamily: SANS, fontSize: 14, color: C.sage, background: "none", border: "none", padding: 0, cursor: "pointer" }}
-          >
-            ← All three workflows
-          </button>
-          <div style={{ flex: 1 }} />
-          {workflow.agentHref ? (
-            <a
-              href={workflow.agentHref}
-              style={{
-                display: "inline-flex",
-                alignItems: "center",
-                height: 44,
-                padding: "0 18px",
-                borderRadius: 10,
-                fontSize: 15,
-                fontWeight: 500,
-                textDecoration: "none",
-                background: C.coral,
-                color: C.white,
-              }}
-            >
-              Automate this →
-            </a>
-          ) : null}
-        </div>
-        <div style={{ display: "flex", justifyContent: "center" }}>
-          <ButterflyCard data={workflow} />
-        </div>
-      </main>
-      <DetailPanel
-        workflow={workflow}
-        readOnly
-        onClose={onBack}
-        onExport={noop}
-        onChain={noop}
-        onDelete={noop}
-        onUpdate={noop}
-        readOnlyNote="Mapped from the capture. Readiness is scored step by step."
-      />
     </div>
   );
 }
