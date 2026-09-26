@@ -85,9 +85,9 @@ describe("where a map splits into a chain", () => {
   it("month-end is two butterflies because the close waits on receipts", () => {
     const close = DEMO_WORKFLOWS.find((w) => w.id === "demo-month-end-close")!;
     expect(waitsInside(close.steps)[0].afterStep).toBe(3);
-    expect(close.chain!.map((p) => [p.from, p.to, p.handoff])).toEqual([
-      [1, 3, "Receipts in"],
-      [4, 10, undefined],
+    expect(close.chain!.map((p) => [p.from, p.to, p.enteredFrom?.label])).toEqual([
+      [1, 3, undefined],
+      [4, 10, "Waits for the receipts"],
     ]);
   });
 
@@ -95,6 +95,30 @@ describe("where a map splits into a chain", () => {
     for (const w of DEMO_WORKFLOWS.filter((w) => w.chain)) {
       const covered = w.chain!.flatMap((p) => w.steps.filter((s) => s.n >= p.from && s.n <= p.to).map((s) => s.n));
       expect(covered).toEqual(w.steps.map((s) => s.n));
+    }
+  });
+});
+
+describe("outputs are the exits", () => {
+  it("every card is entered from a real output of an earlier card, into a real input of its own", () => {
+    for (const w of DEMO_WORKFLOWS.filter((w) => w.chain)) {
+      w.chain!.forEach((part, index) => {
+        if (!part.enteredFrom) return;
+        const from = w.chain![part.enteredFrom.part];
+        expect(part.enteredFrom.part).toBeLessThan(index);
+        expect(from.outputs.map((o) => o.name), `${w.name}: ${part.name}`).toContain(part.enteredFrom.output);
+        expect(part.inputs.map((i) => i.name), `${w.name}: ${part.name}`).toContain(part.enteredFrom.input);
+      });
+    }
+  });
+
+  it("a card with more than one way out says when each happens", () => {
+    for (const w of DEMO_WORKFLOWS) {
+      for (const card of w.chain ?? [w]) {
+        if (card.outputs.length > 1 && w.chain) {
+          for (const output of card.outputs) expect(output.when, `${w.name}: ${output.name}`).toBeTruthy();
+        }
+      }
     }
   });
 });

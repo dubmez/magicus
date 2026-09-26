@@ -1,9 +1,9 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useLayoutEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { DemoHeader } from "@/app/components/demo-header";
-import { ButterflyCard, type StepMark } from "@/app/components/butterfly-card";
+import { ButterflyCard, ioAnchor, type StepMark } from "@/app/components/butterfly-card";
 import { DetailPanel } from "@/app/components/detail-panel";
 import { FRICTIONS, HOTSPOT_META, formatPounds, rankWorkflows, type RankedWorkflow } from "@/lib/demo-map";
 import { MapEnquiry } from "./map-enquiry";
@@ -70,8 +70,11 @@ export function WorkflowMap({ slug }: { slug: string }) {
 }
 
 /**
- * The map: one butterfly, or a chain of them when the work waits part-way (the rule
- * is in lib/chaining.ts). Each link is labelled with the event the next one waits for.
+ * The map: one butterfly, or several joined output to input when the work waits or
+ * can go more than one way (lib/chaining.ts). Cards read left to right; a card that
+ * several others leave from fans them out in a column. Each line runs from the output
+ * it leaves by to the input it arrives through: one card's exit is the next one's
+ * entrance.
  */
 function Butterflies({ workflow, marks }: { workflow: RankedWorkflow; marks: Record<number, StepMark> }) {
   if (!workflow.chain) {
@@ -81,37 +84,125 @@ function Butterflies({ workflow, marks }: { workflow: RankedWorkflow; marks: Rec
       </div>
     );
   }
+  return <Flow workflow={workflow} marks={marks} />;
+}
+
+type Line = { d: string; label: string; x: number; y: number; head: string };
+
+function Flow({ workflow, marks }: { workflow: RankedWorkflow; marks: Record<number, StepMark> }) {
+  const parts = workflow.chain!;
+  // Column = how many cards stand before this one.
+  const depth = (i: number): number => (parts[i].enteredFrom ? depth(parts[i].enteredFrom!.part) + 1 : 0);
+  const columns: number[][] = [];
+  parts.forEach((_, i) => (columns[depth(i)] ??= []).push(i));
+
+  const frame = useRef<HTMLDivElement>(null);
+  const inner = useRef<HTMLDivElement>(null);
+  const [scale, setScale] = useState(1);
+  const [lines, setLines] = useState<Line[]>([]);
+  // The scaled flow keeps its real height, so the page below it does not jump.
+  const [height, setHeight] = useState<number | undefined>(undefined);
+
+  useLayoutEffect(() => {
+    const measure = () => {
+      const outer = frame.current;
+      const box = inner.current;
+      if (!outer || !box) return;
+      // Fit the whole flow beside the value panel; never enlarge it.
+      const fit = Math.min(1, outer.clientWidth / box.scrollWidth);
+      setScale((current) => (Math.abs(current - fit) > 0.01 ? fit : current));
+      setHeight(Math.ceil(box.offsetHeight * fit));
+      const origin = box.getBoundingClientRect();
+      const k = origin.width / box.offsetWidth || 1;
+      const next: Line[] = [];
+      parts.forEach((part, index) => {
+        if (!part.enteredFrom) return;
+        const out = box.querySelector<HTMLElement>(`[data-part="${part.enteredFrom.part}"] [data-io="${ioAnchor("out", part.enteredFrom.output)}"]`);
+        const inn = box.querySelector<HTMLElement>(`[data-part="${index}"] [data-io="${ioAnchor("in", part.enteredFrom.input)}"]`);
+        if (!out || !inn) return;
+        const a = out.getBoundingClientRect();
+        const b = inn.getBoundingClientRect();
+        const x1 = (a.right - origin.left) / k;
+        const y1 = (a.top + a.height / 2 - origin.top) / k;
+        const x2 = (b.left - origin.left) / k - 3;
+        const y2 = (b.top + b.height / 2 - origin.top) / k;
+        const dx = Math.max(40, (x2 - x1) / 2);
+        next.push({
+          d: `M ${x1} ${y1} C ${x1 + dx} ${y1}, ${x2 - dx} ${y2}, ${x2} ${y2}`,
+          head: `M ${x2 - 7} ${y2 - 5} L ${x2 + 1} ${y2} L ${x2 - 7} ${y2 + 5}`,
+          label: part.enteredFrom.label,
+          x: (x1 + x2) / 2,
+          y: (y1 + y2) / 2,
+        });
+      });
+      setLines((current) => (JSON.stringify(current) === JSON.stringify(next) ? current : next));
+    };
+    measure();
+    const observer = new ResizeObserver(measure);
+    if (frame.current) observer.observe(frame.current);
+    document.fonts?.ready.then(measure);
+    return () => observer.disconnect();
+  }, [parts]);
+
   return (
-    <div style={{ display: "flex", flexDirection: "column", alignItems: "center" }}>
-      {workflow.chain.map((part, index) => (
-        <div key={part.name} style={{ display: "flex", flexDirection: "column", alignItems: "center" }}>
-          <ButterflyCard
-            data={{ ...part, steps: workflow.steps.filter((s) => s.n >= part.from && s.n <= part.to) }}
-            marks={marks}
-            hideScore
-          />
-          {part.handoff && index < workflow.chain!.length - 1 ? (
-            <div aria-label={`Then: ${part.handoff}`} style={{ display: "flex", flexDirection: "column", alignItems: "center", margin: "6px 0 14px" }}>
-              <div style={{ height: 18, borderLeft: `1.5px dashed ${C.sageMid}` }} />
-              <span
-                style={{
-                  fontSize: 12,
-                  fontWeight: 600,
-                  color: C.sage,
-                  background: C.white,
-                  border: `1px solid ${C.rule}`,
-                  borderRadius: 999,
-                  padding: "4px 12px",
-                }}
-              >
-                Waits for: {part.handoff}
-              </span>
-              <div style={{ height: 18, borderLeft: `1.5px dashed ${C.sageMid}` }} />
-              <div style={{ width: 0, height: 0, borderLeft: "5px solid transparent", borderRight: "5px solid transparent", borderTop: `5px solid ${C.sageMid}` }} />
+    <div ref={frame} style={{ width: "100%" }}>
+      <div style={{ height }}>
+        <div
+          ref={inner}
+          style={{
+            position: "relative",
+            display: "inline-flex",
+            alignItems: "center",
+            gap: 150,
+            transform: `scale(${scale})`,
+            transformOrigin: "0 0",
+            padding: "8px 8px 16px",
+          }}
+        >
+          {columns.map((column, c) => (
+            <div key={c} style={{ display: "flex", flexDirection: "column", gap: 48 }}>
+              {column.map((i) => (
+                <div key={parts[i].name} data-part={i}>
+                  <ButterflyCard
+                    data={{ ...parts[i], steps: workflow.steps.filter((s) => s.n >= parts[i].from && s.n <= parts[i].to) }}
+                    marks={marks}
+                    hideScore
+                  />
+                </div>
+              ))}
             </div>
-          ) : null}
+          ))}
+          <svg aria-hidden style={{ position: "absolute", inset: 0, width: "100%", height: "100%", overflow: "visible", pointerEvents: "none" }}>
+            {lines.map((line) => (
+              <g key={line.d}>
+                <path d={line.d} fill="none" stroke={C.sage} strokeWidth={2} strokeDasharray="7 5" opacity={0.8} />
+                <path d={line.head} fill="none" stroke={C.sage} strokeWidth={2} />
+              </g>
+            ))}
+          </svg>
+          {lines.map((line) => (
+            <span
+              key={line.label}
+              style={{
+                position: "absolute",
+                left: line.x,
+                top: line.y,
+                transform: "translate(-50%, -50%)",
+                fontSize: 12,
+                fontWeight: 600,
+                color: C.sage,
+                background: C.white,
+                border: `1px solid ${C.rule}`,
+                borderRadius: 999,
+                padding: "4px 12px",
+                whiteSpace: "nowrap",
+              }}
+            >
+              {line.label}
+            </span>
+          ))}
         </div>
-      ))}
+      </div>
     </div>
   );
 }
