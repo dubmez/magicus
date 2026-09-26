@@ -29,7 +29,7 @@ import { useAuth, useRequireAuth } from "@/lib/auth-context";
 type GeneratedWorkflow = Omit<Workflow, "x" | "y">;
 type GeneratedResponse = {
   workflows: GeneratedWorkflow[];
-  connections: { from: string; to: string; label?: string }[];
+  connections: { from: string; to: string; label?: string; fromOutput?: string; toInput?: string }[];
 };
 
 async function generateFromAPI(
@@ -577,7 +577,7 @@ function Home() {
       const from = idMap.get(c.from);
       const to = idMap.get(c.to);
       if (!from || !to) return [];
-      return [{ from, to, label: c.label }];
+      return [{ from, to, label: c.label, ...(c.fromOutput ? { fromOutput: c.fromOutput } : {}), ...(c.toInput ? { toInput: c.toInput } : {}) }];
     });
     const firstId = newWorkflows[0].id;
 

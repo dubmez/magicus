@@ -1,6 +1,8 @@
-// When a run of steps is one butterfly, and when it becomes a chain of them.
+// When a run of steps is one butterfly, and when it becomes several.
 //
-// The rule is one sentence: split where the work waits. A butterfly is what one
+// The rule: a card ends where the work waits, or where it can go more than one way;
+// each way out is one of its outputs, and an output is the next card's entrance.
+// The original half of it: A butterfly is what one
 // person or team does in one go, from its trigger to a hand-off. When the next step
 // cannot start until something outside happens (a reply, an approval, another team
 // picking it up, a date), the butterfly ends there, and the next one starts with that
@@ -16,11 +18,13 @@
 import type { Step } from "./workflows";
 
 /** The rule as the model that drafts workflows is told it. */
-export const CHAIN_RULE = `Decide between one workflow and a chain with one rule: split where the work waits.
-   - A workflow card is what one person or team does in one go, from its trigger to a hand-off.
-   - When the next step cannot start until something outside happens (a reply, an approval, another team picking the work up, a date), end the card at the step that hands off, and start a new card whose trigger is that event. Label the connection with the event (e.g. "Receipts in", "Draft approved").
-   - Never split only because the tool changes, a colleague helps inside one step, or the card is long. A card past 8 steps usually hides a wait: look for one, and split there if you find it.
-   - If nothing waits, generate ONE card.`;
+export const CHAIN_RULE = `Decide between one workflow and a chain with one rule: a card is what one person or team does in one go. It ends where the work waits, or where it can go more than one way.
+   - Never branch inside a card: its steps are always one straight line.
+   - When the work can end more than one way, give the card one output per way out, each with "when" saying when it happens (e.g. "every line matches", "a line is off"). A card with one way out has one output and no "when".
+   - When the next step cannot start until something outside happens (a reply, an approval, another team picking the work up, a date), end the card there too.
+   - Connect each output that leads somewhere to the card that picks it up, naming the output it leaves by ("fromOutput") and the input of the next card it arrives through ("toInput"): one card's exit is the next card's entrance. Label the connection with what it waits for or which way it went (e.g. "Waits for the supplier's reply", "A line is off"). An output that goes nowhere else in the map needs no connection.
+   - Never split only because the tool changes, a colleague helps inside one step, or the card is long. A card past 8 steps usually hides a wait or a fork: look for one.
+   - If nothing waits and nothing forks, generate ONE card.`;
 
 /** Words that say a step leaves the work waiting on someone or something else. */
 const WAITS = /\b(chase|chasing|wait|waits|waiting|await|awaiting|until|follow[- ]?up|approval from|sign-?off from)\b/i;

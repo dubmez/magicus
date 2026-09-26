@@ -1,8 +1,8 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { Minus, Plus, Maximize2, X, Pencil } from "lucide-react";
-import { ButterflyCard } from "./butterfly-card";
+import { ButterflyCard, ioAnchor } from "./butterfly-card";
 import {
   type Workflow,
   type Connection,
@@ -10,6 +10,7 @@ import {
   computeChains,
   chainKey,
   inferChainName,
+  ioLink,
 } from "@/lib/workflows";
 
 const CARD_W = 560;
@@ -235,6 +236,30 @@ export function Canvas({
   };
 
   // eslint-disable-next-line react-hooks/exhaustive-deps
+  // Where each output and input chip sits inside its card, in world units, so a
+  // connection can join the exact output it leaves from to the input it lands on.
+  const worldRef = useRef<HTMLDivElement>(null);
+  const [anchors, setAnchors] = useState<Record<string, { dx: number; dy: number; w: number; h: number }>>({});
+  useLayoutEffect(() => {
+    const world = worldRef.current;
+    if (!world) return;
+    const next: Record<string, { dx: number; dy: number; w: number; h: number }> = {};
+    world.querySelectorAll<HTMLElement>("[data-wf]").forEach((card) => {
+      const box = card.getBoundingClientRect();
+      const k = box.width / (card.offsetWidth || 1) || 1;
+      card.querySelectorAll<HTMLElement>("[data-io]").forEach((chip) => {
+        const r = chip.getBoundingClientRect();
+        next[`${card.dataset.wf}|${chip.dataset.io}`] = {
+          dx: (r.left - box.left) / k,
+          dy: (r.top - box.top) / k,
+          w: r.width / k,
+          h: r.height / k,
+        };
+      });
+    });
+    setAnchors((prev) => (JSON.stringify(prev) === JSON.stringify(next) ? prev : next));
+  }, [workflows, connections, scale]);
+
   useEffect(() => { fit(); }, []);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => { fit(); }, [canvas.id]);
@@ -323,6 +348,7 @@ export function Canvas({
       }}
     >
       <div
+        ref={worldRef}
         style={{
           position: "absolute",
           left: 0,
@@ -382,10 +408,15 @@ export function Canvas({
             const a = wfMap.get(c.from);
             const b = wfMap.get(c.to);
             if (!a || !b) return null;
-            const ax = a.x + CARD_W - minX;
-            const ay = a.y + CARD_H / 2 - minY;
-            const bx = b.x - minX;
-            const by = b.y + CARD_H / 2 - minY;
+            // Exit to entrance: from the named output chip to the named input chip,
+            // or wing to wing when the connection names neither.
+            const link = ioLink(c, a, b);
+            const out = link.fromOutput ? anchors[`${a.id}|${ioAnchor("out", link.fromOutput)}`] : undefined;
+            const inn = link.toInput ? anchors[`${b.id}|${ioAnchor("in", link.toInput)}`] : undefined;
+            const ax = (out ? a.x + out.dx + out.w : a.x + CARD_W) - minX;
+            const ay = (out ? a.y + out.dy + out.h / 2 : a.y + CARD_H / 2) - minY;
+            const bx = (inn ? b.x + inn.dx : b.x) - minX;
+            const by = (inn ? b.y + inn.dy + inn.h / 2 : b.y + CARD_H / 2) - minY;
             const dx = Math.max(80, (bx - ax) / 2);
             const path = `M ${ax} ${ay} C ${ax + dx} ${ay}, ${bx - dx} ${by}, ${bx} ${by}`;
             const key = `${c.from}-${c.to}`;
@@ -467,6 +498,7 @@ export function Canvas({
             <div
               key={w.id}
               data-card
+              data-wf={w.id}
               style={{
                 position: "absolute",
                 left: w.x,

@@ -35,9 +35,11 @@ export const HOTSPOT_META: Record<HotspotKind, { label: string; fg: string; bg: 
 };
 
 /**
- * One butterfly of a chain. The rule for where a chain splits is in lib/chaining.ts:
- * split where the work waits. Steps keep their numbers across the chain, so a value
- * hotspot on step 7 means the same step whichever butterfly it sits in.
+ * One card of a map drawn as several. A card ends where the work waits or where it can
+ * go more than one way (lib/chaining.ts), and each way out is one of its outputs. A
+ * card is entered through one of its inputs, from an output of an earlier card:
+ * that output is this card's entrance. Steps keep their numbers across the cards, so a
+ * value hotspot on step 7 means the same step whichever card it sits in.
  */
 export type ChainPart = {
   name: string;
@@ -48,12 +50,12 @@ export type ChainPart = {
   inputs: IOItem[];
   outputs: IOItem[];
   tools: string[];
-  /** The event that starts the next butterfly, shown on the connection. */
-  handoff?: string;
+  /** How this card is entered: which earlier card's output leads to which of its inputs. */
+  enteredFrom?: { part: number; output: string; input: string; label: string };
 };
 
 export type DemoWorkflow = Workflow & {
-  /** Set when the work waits part-way, so the map is a chain of butterflies. */
+  /** Set when the work waits or branches part-way, so the map is several cards joined output to input. */
   chain?: ChainPart[];
   /** The map's address: /map/<slug>. */
   slug: string;
@@ -103,6 +105,35 @@ export const DEMO_WORKFLOWS: DemoWorkflow[] = [
     agentHref: "/agents?mode=invoices",
     reason: "Most hours back, and the rules already live in your rate cards.",
     why: "Every supplier invoice is checked by eye against the rate card before it is paid.",
+    // The check can end two ways, so it is two cards: the second is entered from the
+    // "Discrepancy" output, one way out of the first.
+    chain: [
+      {
+        name: "Check the invoice",
+        trigger: { type: "event", description: "A supplier invoice arrives by email" },
+        from: 1,
+        to: 5,
+        inputs: [
+          { name: "Supplier invoice", source: "Gmail" },
+          { name: "Rate card", source: "Google Drive" },
+        ],
+        outputs: [
+          { name: "Approved invoice", source: "Accounts payable", when: "every line matches" },
+          { name: "Discrepancy", source: "Finance manager", when: "a line is off" },
+        ],
+        tools: ["Gmail", "Google Drive"],
+      },
+      {
+        name: "Raise the query",
+        trigger: { type: "chained" },
+        from: 6,
+        to: 7,
+        inputs: [{ name: "Discrepancy", source: "Finance manager" }],
+        outputs: [{ name: "Query to supplier", source: "Slack" }],
+        tools: ["Google Sheets", "Slack"],
+        enteredFrom: { part: 0, output: "Discrepancy", input: "Discrepancy", label: "A line is off" },
+      },
+    ],
     inputs: [
       { name: "Supplier invoice", source: "Gmail" },
       { name: "Rate card", source: "Google Drive" },
@@ -180,13 +211,13 @@ export const DEMO_WORKFLOWS: DemoWorkflow[] = [
         ],
         outputs: [{ name: "Receipt requests", source: "Email" }],
         tools: ["Bank portal", "Accounting system", "Email"],
-        handoff: "Receipts in",
       },
       {
         name: "Close and report",
         trigger: { type: "chained" },
         from: 4,
         to: 10,
+        enteredFrom: { part: 0, output: "Receipt requests", input: "Receipts", label: "Waits for the receipts" },
         inputs: [
           { name: "Receipts", source: "Email" },
           { name: "Reconciled ledger", source: "Accounting system" },

@@ -78,13 +78,13 @@ type GeneratedWorkflow = {
     automationPotential?: GeneratedAutomationPotential;
     isSensitive?: boolean;
   }[];
-  outputs: { name: string; source: string }[];
+  outputs: { name: string; source: string; when?: string }[];
   tools: string[];
   automationScore: number;
   automationRationale: string;
 };
 
-type GeneratedConnection = { from: string; to: string; label?: string };
+type GeneratedConnection = { from: string; to: string; label?: string; fromOutput?: string; toInput?: string };
 
 type GenerateResponse = {
   workflows: GeneratedWorkflow[];
@@ -147,7 +147,11 @@ const anthropicTool = {
               type: "array",
               items: {
                 type: "object",
-                properties: { name: { type: "string" }, source: { type: "string" } },
+                properties: {
+                  name: { type: "string" },
+                  source: { type: "string" },
+                  when: { type: "string", description: "Only when the card has more than one way out: when this output happens, e.g. \"every line matches\"." },
+                },
                 required: ["name", "source"],
               },
             },
@@ -169,6 +173,8 @@ const anthropicTool = {
             from: { type: "string" },
             to: { type: "string" },
             label: { type: "string" },
+            fromOutput: { type: "string", description: "The name of the output of `from` this connection leaves by." },
+            toInput: { type: "string", description: "The name of the input of `to` it arrives through." },
           },
           required: ["from", "to"],
         },
@@ -242,6 +248,7 @@ const geminiSchema = {
               properties: {
                 name: { type: Type.STRING },
                 source: { type: Type.STRING },
+                when: { type: Type.STRING, nullable: true },
               },
               required: ["name", "source"],
             },
@@ -264,6 +271,8 @@ const geminiSchema = {
           from: { type: Type.STRING },
           to: { type: Type.STRING },
           label: { type: Type.STRING, nullable: true },
+          fromOutput: { type: Type.STRING, nullable: true },
+          toInput: { type: Type.STRING, nullable: true },
         },
         required: ["from", "to"],
       },

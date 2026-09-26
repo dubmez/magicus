@@ -1,10 +1,16 @@
 "use client";
 
 import { Zap, Link2, AlertCircle, Lock } from "lucide-react";
-import type { Step } from "@/lib/workflows";
+import type { IOItem, Step } from "@/lib/workflows";
 import { calculateAutomationScore, SENSITIVE_META } from "@/lib/workflows";
 
-type IOItem = { name: string; source: string };
+/** Colours that tell a card's outputs apart when it has more than one way out. */
+export const OUTPUT_COLOURS = ["#547863", "#D9492F", "#B7791F", "#3B4953"];
+
+/** The attribute a connector looks for to join an output or input chip. */
+export function ioAnchor(side: "in" | "out", name: string): string {
+  return `${side}:${name.trim().toLowerCase()}`;
+}
 
 /** A mark on one step, e.g. where value sits. Keyed by step number. */
 export type StepMark = { label: string; fg: string; bg: string };
@@ -21,10 +27,11 @@ export type ButterflyData = {
 const dmSans = { fontFamily: "var(--font-dm-sans), sans-serif" };
 const dmSerif = { fontFamily: "var(--font-dm-serif), serif", fontStyle: "italic" as const };
 
-function IOCard({ item, align }: { item: IOItem; align: "left" | "right" }) {
+function IOCard({ item, align, dot }: { item: IOItem; align: "left" | "right"; dot?: string }) {
   return (
     <div
       className="bg-white rounded-[10px] px-3 py-2"
+      data-io={ioAnchor(align === "left" ? "in" : "out", item.name)}
       style={{
         ...dmSans,
         textAlign: align === "left" ? "left" : "right",
@@ -32,8 +39,19 @@ function IOCard({ item, align }: { item: IOItem; align: "left" | "right" }) {
       }}
     >
       <div style={{ fontSize: 12, color: "#3B4953", fontWeight: 500, lineHeight: 1.3 }}>
+        {dot ? (
+          <span
+            aria-hidden
+            style={{ display: "inline-block", width: 7, height: 7, borderRadius: 99, background: dot, marginRight: 5, verticalAlign: 1 }}
+          />
+        ) : null}
         {item.name}
       </div>
+      {item.when ? (
+        <div style={{ fontSize: 10, color: "#547863", marginTop: 2, lineHeight: 1.3, fontStyle: "italic" }}>
+          when {item.when}
+        </div>
+      ) : null}
       <div style={{ fontSize: 10, color: "#90AB8B", marginTop: 2, lineHeight: 1.3 }}>
         {item.source}
       </div>
@@ -102,8 +120,14 @@ function Wing({
         {label}
       </div>
       <div className="flex flex-col gap-1.5">
-        {items.map((item) => (
-          <IOCard key={item.name} item={item} align={side} />
+        {items.map((item, index) => (
+          <IOCard
+            key={item.name}
+            item={item}
+            align={side}
+            // Several ways out: tell them apart at a glance.
+            dot={!left && items.filter((i) => i.when).length > 1 && item.when ? OUTPUT_COLOURS[index % OUTPUT_COLOURS.length] : undefined}
+          />
         ))}
       </div>
     </div>
@@ -307,6 +331,38 @@ export function ButterflyCard({
         </div>
       </div>
 
+      {/* TOOLS — under the head, where the reader starts: what this work runs on */}
+      {data.tools.length > 0 && (
+        <div className="flex justify-center" style={{ marginTop: compact ? -4 : -6, position: "relative", zIndex: 9 }}>
+          <div
+            style={{
+              background: "#547863",
+              borderRadius: compact ? 10 : 14,
+              padding: compact ? "4px 8px" : "6px 12px",
+              display: "flex",
+              gap: compact ? 4 : 6,
+              zIndex: 10,
+              position: "relative",
+            }}
+          >
+            {data.tools.map((tool) => (
+              <span
+                key={tool}
+                style={{
+                  background: "rgba(255, 255, 255, 0.18)",
+                  color: "#FFFFFF",
+                  fontSize: compact ? 8 : 10,
+                  fontWeight: 500,
+                  padding: compact ? "2px 6px" : "3px 9px",
+                  borderRadius: 999,
+                }}
+              >
+                {tool}
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
       {/* WINGS + BODY
           The body is the process: its steps joined box to box, top to bottom. The
           wings are short, and sit level with the middle of the body, joined to it by
@@ -415,38 +471,6 @@ export function ButterflyCard({
         <Wing side="right" label="Outputs" items={data.outputs} compact={compact} />
       </div>
 
-      {/* FOOT — only when there are tools to show */}
-      {data.tools.length > 0 && (
-        <div className="flex justify-center" style={{ marginTop: compact ? -6 : -8 }}>
-          <div
-            style={{
-              background: "#547863",
-              borderRadius: compact ? 10 : 14,
-              padding: compact ? "5px 9px" : "8px 14px",
-              display: "flex",
-              gap: compact ? 4 : 6,
-              zIndex: 10,
-              position: "relative",
-            }}
-          >
-            {data.tools.map((tool) => (
-              <span
-                key={tool}
-                style={{
-                  background: "rgba(255, 255, 255, 0.18)",
-                  color: "#FFFFFF",
-                  fontSize: compact ? 8 : 10,
-                  fontWeight: 500,
-                  padding: compact ? "2px 6px" : "3px 9px",
-                  borderRadius: 999,
-                }}
-              >
-                {tool}
-              </span>
-            ))}
-          </div>
-        </div>
-      )}
     </div>
   );
 }

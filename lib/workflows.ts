@@ -1,6 +1,12 @@
 export type Theme = "sales" | "marketing" | "operations" | "finance";
 
-export type IOItem = { name: string; source: string };
+export type IOItem = {
+  name: string;
+  source: string;
+  // Outputs only: when this output happens, e.g. "every line matches". A card with
+  // more than one way out has one output per way; that is how a workflow branches.
+  when?: string;
+};
 
 // How automatable a single step is, on its own merits.
 //   high   — rule-based, deterministic, no judgment needed
@@ -136,7 +142,10 @@ export type Workflow = {
   isSeeded?: boolean;
 };
 
-export type Connection = { from: string; to: string; label?: string };
+// One card's output is the next card's input: a connection can name the output it
+// leaves from and the input it lands on, so the line joins those two chips. Without
+// them it joins the cards' wings (and an output and input with the same name match).
+export type Connection = { from: string; to: string; label?: string; fromOutput?: string; toInput?: string };
 
 export type Canvas = {
   id: string;
@@ -182,6 +191,27 @@ export const LIBRARY_CATEGORY_ORDER: LibraryCategory[] = [
 ];
 
 // ─── Chain utilities ──────────────────────────────────────────────────────────
+
+/**
+ * Which output a connection leaves from and which input it lands on: the names it
+ * carries, or else an output of the source with the same name as an input of the
+ * target ("Receipts" out, "Receipts" in). Absent means join the wings.
+ */
+export function ioLink(
+  connection: Connection,
+  from: Pick<Workflow, "outputs">,
+  to: Pick<Workflow, "inputs">,
+): { fromOutput?: string; toInput?: string } {
+  const same = (a: string, b: string) => a.trim().toLowerCase() === b.trim().toLowerCase();
+  if (connection.fromOutput || connection.toInput) {
+    return {
+      fromOutput: from.outputs.find((o) => connection.fromOutput && same(o.name, connection.fromOutput))?.name,
+      toInput: to.inputs.find((i) => connection.toInput && same(i.name, connection.toInput))?.name,
+    };
+  }
+  const shared = from.outputs.find((o) => to.inputs.some((i) => same(i.name, o.name)));
+  return shared ? { fromOutput: shared.name, toInput: to.inputs.find((i) => same(i.name, shared.name))!.name } : {};
+}
 
 export function computeChains(workflowIds: string[], connections: Connection[]): string[][] {
   const adj = new Map<string, Set<string>>();
