@@ -13,10 +13,26 @@ type Zone = 'map' | 'control'
 
 const MAP_HREF = process.env.NEXT_PUBLIC_MAP_URL ?? '/map'
 
-const NAV: { label: string; href: string; zone: Zone; match: string }[] = [
-  { label: 'Map', href: MAP_HREF, zone: 'map', match: '/map' },
-  { label: 'Agents', href: '/agents', zone: 'control', match: '/agents' },
-  { label: 'Track', href: '/track', zone: 'control', match: '/track' },
+/** The workflow each agent automates, as its map's path under /map. */
+const MAP_FOR: Record<DemoMode, string> = {
+  invoices: 'invoice-check',
+  contracts: 'contract-review',
+}
+
+type Step = { label: string; href: (mode: DemoMode) => string; zone: Zone; active: (path: string) => boolean }
+
+/** Where work gets stuck, how it runs today, the agent at work, and what it found. */
+const AGENT_SCREENS = ['/agents', '/agents/reading', '/agents/connect', '/agents/audit']
+const STEPS: Step[] = [
+  { label: 'Frictions', href: () => MAP_HREF, zone: 'map', active: (p) => p === '/map' },
+  { label: 'Map', href: (mode) => `${MAP_HREF}/${MAP_FOR[mode]}`, zone: 'map', active: (p) => p.startsWith('/map/') },
+  { label: 'Agent', href: () => '/agents', zone: 'control', active: (p) => AGENT_SCREENS.includes(p) },
+  {
+    label: 'Result',
+    href: () => '/agents/answer',
+    zone: 'control',
+    active: (p) => p === '/track' || p.startsWith('/track/') || (p.startsWith('/agents/') && !AGENT_SCREENS.includes(p)),
+  },
 ]
 
 const C = {
@@ -69,7 +85,7 @@ export function DemoHeader({ zone, children }: { zone: Zone; children?: React.Re
           gap: 24,
         }}
       >
-        <HeaderLink href={withMode(MAP_HREF, mode)} inZone={zone === 'map'} label="Magicus, back to the map">
+        <HeaderLink href={withMode(MAP_HREF, mode)} inZone={zone === 'map'} label="Magicus, back to the start">
           <span style={{ display: 'inline-flex', alignItems: 'center', gap: 9 }}>
             <Mark />
             <span style={{ fontFamily: SERIF, fontStyle: 'italic', fontSize: 25, color: C.ink, letterSpacing: '-0.01em', lineHeight: 1 }}>
@@ -78,17 +94,18 @@ export function DemoHeader({ zone, children }: { zone: Zone; children?: React.Re
           </span>
         </HeaderLink>
 
-        <nav aria-label="Demo" style={{ display: 'flex', gap: 4, background: C.white, border: `1px solid ${C.rule}`, borderRadius: 999, padding: 4 }}>
-          {NAV.map((item) => {
-            const active = pathname === item.match || pathname.startsWith(`${item.match}/`)
+        <nav aria-label="Demo" style={{ display: 'flex', alignItems: 'center', gap: 4, background: C.white, border: `1px solid ${C.rule}`, borderRadius: 999, padding: 4 }}>
+          {STEPS.map((step, index) => {
+            const active = step.active(pathname)
             return (
-              <HeaderLink key={item.label} href={withMode(item.href, mode)} inZone={item.zone === zone} current={active}>
+              <HeaderLink key={step.label} href={withMode(step.href(mode), mode)} inZone={step.zone === zone} current={active}>
                 <span
                   style={{
                     display: 'inline-flex',
                     alignItems: 'center',
+                    gap: 8,
                     height: 32,
-                    padding: '0 18px',
+                    padding: '0 16px 0 8px',
                     borderRadius: 999,
                     fontSize: 14,
                     fontWeight: 500,
@@ -96,7 +113,24 @@ export function DemoHeader({ zone, children }: { zone: Zone; children?: React.Re
                     background: active ? C.surface : 'transparent',
                   }}
                 >
-                  {item.label}
+                  <span
+                    aria-hidden="true"
+                    style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      width: 20,
+                      height: 20,
+                      borderRadius: 999,
+                      fontSize: 11,
+                      fontWeight: 600,
+                      color: active ? C.white : C.sage,
+                      background: active ? C.sage : C.surface,
+                    }}
+                  >
+                    {index + 1}
+                  </span>
+                  {step.label}
                 </span>
               </HeaderLink>
             )
@@ -105,7 +139,8 @@ export function DemoHeader({ zone, children }: { zone: Zone; children?: React.Re
 
         <div style={{ justifySelf: 'end', display: 'flex', alignItems: 'center', gap: 16 }}>
           {children}
-          <ModeToggle mode={mode} />
+          {/* On the map the friction chosen sets the lead; the toggle only matters past it. */}
+          {zone === 'control' ? <ModeToggle mode={mode} /> : null}
         </div>
       </div>
     </header>
